@@ -10,7 +10,7 @@
 
 하나의 자바스크립트 함수 CoreConcept({image, title, description})에 HTML(return문 전체), JS가 섞여 있다.
 
-CSS 또한 위 태그에 인라인 스타일링 방식으로 <p style=”{{color: “green”}}”>{description}</p>처럼 적용할 수 있다. 다만 이 방식은 .jsx 기능이 아니라 JS 라이브러리인 styled-component가 제공하는 기능이다. 이렇게 한 소스 파일 안에서 HTML/CSS/JS + 리액트 라이브러리의 모든 요소를 활용하다 보니 편리한 만큼 복잡성도 커진다. 그렇기 때문에 리액트의 작업 프로세스 안에 다양한 의존 라이브러리가 들어와 있다는 걸 인지한 채로 학습하는 게 좋을 것 같다. .jsx, react, styled-component 등 여러 의존성이 각자 어떤 역할을 수행하는지 알고 학습해야 문제 발생 시에 정확한 원인을 찾아 해결할 수 있다.
+CSS 또한 위 태그에 인라인 스타일링 방식으로 ```<p style={{color: “green”}}>{description}</p>```처럼 적용할 수 있다. 다만 이 방식은 .jsx 기능이 아니라 JS 라이브러리인 styled-component가 제공하는 기능이다. 이렇게 한 소스 파일 안에서 HTML/CSS/JS + 리액트 라이브러리의 모든 요소를 활용하다 보니 편리한 만큼 복잡성도 커진다. 그렇기 때문에 리액트의 작업 프로세스 안에 다양한 의존 라이브러리가 들어와 있다는 걸 인지한 채로 학습하는 게 좋을 것 같다. .jsx, react, styled-component 등 여러 의존성이 각자 어떤 역할을 수행하는지 알고 학습해야 문제 발생 시에 정확한 원인을 찾아 해결할 수 있다.
 
 이 함수는 최상위 컴포넌트인 App.jsx에서 최종적으로 활용된다.JS 구문 안에서 쓰인 HTML이 .jsx 구문이다. 조금 심화하면 저렇게 HTML로 쓰인 구문이 트랜스 파일러(보통 Vite같은 빌더 툴에 포함)로 비슷한 추상화 레벨의 언어인 JS로 번역된다.
 
@@ -18,7 +18,8 @@ CSS 또한 위 태그에 인라인 스타일링 방식으로 <p style=”{{color
 
 .jsx를 .js 파일로 트랜스파일하면 위의 HTML이 아래의 React.createElemenet 함수와 그 인자로 번역된다.
 
-.jsx 내부에서 자바스크립트 문법을 쓰려면 {}로 래핑해야 한다. 위 예시에서도 <h1>Hello, {name}!</h1>; 과 같이 .jsx 문법으로 쓰인 <h1> 태그 안에 JS로 선언된 name을 넣기 위해 대괄호로 감싸준 모습을 볼 수 있다. 이것과 별개로 CoreConcept({image, title, description})처럼 함수의 파라미터에 들어간 {image, title, decription}은 JS의 네이티브 디스트럭쳐링 문법이므로 .jsx와 혼동하면 안된다.
+.jsx 내부에서 자바스크립트 문법을 쓰려면 {}로 래핑해야 한다. 위 예시에서도 ```<h1>Hello, {name}!\</h1>``` 과 같이 .jsx 문법으로 쓰인 
+```<h1>``` 태그 안에 JS로 선언된 name을 넣기 위해 대괄호로 감싸준 모습을 볼 수 있다. 이것과 별개로 CoreConcept({image, title, description})처럼 함수의 파라미터에 들어간 {image, title, decription}은 JS의 네이티브 디스트럭쳐링 문법이므로 .jsx와 혼동하면 안된다.
 
 ## **리액트의 동작**
 
@@ -28,13 +29,13 @@ CSS 또한 위 태그에 인라인 스타일링 방식으로 <p style=”{{color
 
 이 App() 함수는 리액트 프로젝트의 디폴트 엔트리 포인트이다. 그런데 리액트는 어떻게 App() 함수를 실행해서 브라우저의 프론트 페이지 전체를 구성하는 것일까? 리액트의 프론트 페이지는 리액트 프로젝트 내의 index.html이라는 단일 페이지로 드러난다. 아래의 프론트 페이지는 위 App() 함수의 실제 실행 결과로 만들어진 프론트 페이지이다.
 
-![image.png](%E1%84%85%E1%85%B5%E1%84%8B%E1%85%A2%E1%86%A8%E1%84%90%E1%85%B3%20%E1%84%92%E1%85%A1%E1%86%A8%E1%84%89%E1%85%B3%E1%86%B8(Udemy-React%20-%20The%20Complete%20Guide%2020%2024893bcc4f6c80aabac8c23fdd35d222/image%203.png)
+![image.png](./img/image%203.png)
 
 위 페이지의 HTML 파일인 index.html의 내용은 다음과 같다.
 
-![image.png](%E1%84%85%E1%85%B5%E1%84%8B%E1%85%A2%E1%86%A8%E1%84%90%E1%85%B3%20%E1%84%92%E1%85%A1%E1%86%A8%E1%84%89%E1%85%B3%E1%86%B8(Udemy-React%20-%20The%20Complete%20Guide%2020%2024893bcc4f6c80aabac8c23fdd35d222/image%204.png)
+![image.png](./img/image%204.png)
 
-9-12번까지 정의된 <body> 태그를 보면 <div id=”root”> 태그로 감싼 <script type=”module” src=”/src/index.jsx”></script>가 보인다. 그것 뿐이다. 그 외에 페이지에 보이는 다른 태그들을 찾아볼 수 없다. 모두 어디로 간 것일까? 답은 <div id=”root”> 태그로 감싼 <script type=”module” src=”/src/index.jsx”></script>에 있다. 이 script 태그 한 줄에 있는 index.jsx 파일이 전체 화면을 만들어내는 것이다. index.jsx파일은 어떻게 단 한 줄의 script 태그로 리액트 페이지 전체를 구성하는 것일까? 
+9-12번까지 정의된 ```<body>``` 태그를 보면 ```<div id=”root”>``` 태그로 감싼 ```<script type=”module” src=”/src/index.jsx”></script>```가 보인다. 그것 뿐이다. 그 외에 페이지에 보이는 다른 태그들을 찾아볼 수 없다. 모두 어디로 간 것일까? 답은 ```<div id=”root”>``` 태그로 감싼 ```<script type=”module” src=”/src/index.jsx”></script>```에 있다. 이 script 태그 한 줄에 있는 index.jsx 파일이 전체 화면을 만들어내는 것이다. index.jsx파일은 어떻게 단 한 줄의 script 태그로 리액트 페이지 전체를 구성하는 것일까? 
 
 → 빌드된 JS 번들 안에 index.jsx를 시작으로 하는 모든 컴포넌트 트리가 등록되기 때문이다. 이제 index.jsx 파일의 내용을 보자.
 
@@ -48,15 +49,15 @@ CSS 또한 위 태그에 인라인 스타일링 방식으로 <p style=”{{color
 
 ### DOM(Document Object Model)
 
-DOM은 HTML/CSS내의 문서적 요소를 JS 내의 객체로 다룰 수 있게 만든 모델이다. DOM은 최상위 루트 노드를 기준으로 이하의 element(태그 요소)와 attribute(태그 요소가 가지고 있는 속성들, 이를테면 <div id=”root”></div>에서 id=”root”와 같은 속성)을 노드로 갖는 트리 구조로 구성된다.
+DOM은 HTML/CSS내의 문서적 요소를 JS 내의 객체로 다룰 수 있게 만든 모델이다. DOM은 최상위 루트 노드를 기준으로 이하의 element(태그 요소)와 attribute(태그 요소가 가지고 있는 속성들, 이를테면 ```<div id=”root”></div>```에서 id=”root”와 같은 속성)을 노드로 갖는 트리 구조로 구성된다.
 
 다시 리액트로 돌아가면 리액트는 DOM을 만들어 브라우저에 보내기 전에 리액트의 추상화된 UI 모델인 VDOM(Virtual DOM)을 활용한다. VDOM이라는 추가적인 단계를 두는 이유는 Synthetic Event, 컴포넌트 관리(앞서 말한 HTML/CSS/JS가 합쳐진 통합 UI 컴포넌트), 부분 렌더링(상태 관리를 통해 기존의 DOM과 리액트만의 VDOM을 diffing한 후 부분적으로만 렌더링 처리)등 리액트만의 최적화된 기술을 적용하기 위함이다.
 
-7번 코드를 보면 const entryPoint에 document.getElementByID(”root”)를 통해 HTML의 <div id=”root”> 요소가 할당된다.
+7번 코드를 보면 const entryPoint에 document.getElementByID(”root”)를 통해 HTML의 ```<div id=”root”>``` 요소가 할당된다.
 
 ReactDOM은 .createRoot(entryPoint)로 DOM의 엔트리 포인트로 이 entryPoint 객체를 할당한다.
 
-이 객체는 이전의 index.html에서 <div id=”root”> 태그에 해당된다. 이후 ReactDOM.render(<App />)를 통해 App 컴포넌트의 모든 UI 요소가 <div id="root"> 내부에 렌더링된다.
+이 객체는 이전의 index.html에서 ```<div id=”root”>``` 태그에 해당된다. 이후 ```ReactDOM.render(<App />)```를 통해 App 컴포넌트의 모든 UI 요소가 ```<div id="root">``` 내부에 렌더링된다.
 
 지금까지 index.html -> index.jsx -> App()으로 이어지는 리액트의 작업 흐름을 알아봤다.
 
