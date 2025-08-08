@@ -165,3 +165,143 @@ VDOM은 컴포넌트 상태가 변경될 때(```useState()```가 할당된 클�
 ```<ul>, <table>``` 같은 요소는 동질적인 자식 요소를 많이 두는데 이 모든 자식 요소에 일일이 이벤트리스너를 붙이면 메모리가 감당이 안 된다. 그래서 부모 요소인 ```<ul>, <table>``` 등의 이벤트 리스너를 하나만 정의하고 자식 노드에서 발생한 이벤트는 상향 propagation 되는 이벤트 버블링 → 이벤트 위임 패턴이 등장했다. 이때 부모는 자식 노드로부터 이벤트 처리를 위임받는다. 
 
 리액트의 ```SyntheticEvent``` 처리는 위와 같은 기존의 이벤트 버블링 패턴을 극적으로 활용한 사례이다.
+
+## Props, State, Two-Way-Binding
+
+**Props**
+
+부모 컴포넌트가 자식 컴포넌트에 데이터를 전달하는 수단.
+
+읽기 전용(immutable) 객체 형태로 전달된다.
+
+```jsx
+function Welcome(props) {
+	return <h1>Hello, {props.name}</h1>;
+}
+
+<Welcome name="Ironist" />
+```
+
+리액트에서는 구조 분해 할당 방식으로도 많이 사용된다.
+
+```jsx
+function Welcome({name, email}) {
+	return (
+	<h1>Hello, {name}</h1>
+	<p>Your email: {email}</p>
+	);
+}
+
+<Welcome name="Ironist" email:"hello123@gmail.com" />
+```
+
+```jsx
+props = {
+	name: 'Ironist',
+	email: 'hello123@gmail.com'
+}
+```
+
+위에서 Welcome의 속성으로 전달된 props는 위와 같은 객체로 전달된다.
+
+```jsx
+function Card({ children }) {
+  return <div className="card">{children}</div>;
+}
+
+<Card>
+  <p>Hello world</p> // children
+</Card>
+```
+
+태그 사이에 다른 요소가 있으면 props는 자동으로 children이라는 이름의 프로퍼티를 갖는다.
+
+```jsx
+function Button({ onClick }) {
+  return <button onClick={onClick}>Click me</button>;
+}
+
+<Button onClick={() => alert("Clicked")} />
+```
+
+부모 컴포넌트에서 자식 컴포넌트로 이벤트 핸들러 연결 시 함수도 전달한다.
+
+```tsx
+type WelcomeProps = {
+  name: string;
+};
+
+function Welcome({ name }: WelcomeProps) {
+  return <h1>Hello, {name}</h1>;
+}
+
+```
+
+TS에서는 위와 같은 방식으로 선언해 props의 타입 안정성을 확보한다.
+
+Props는 전통적 상속 구조를 따르지 않고 하향식으로 데이터를 전달한다. Props 전달은 명시적으로 이루어지며 단방향 데이터 흐름(Unidirectional Data Flow)를 보인다. 
+
+**State**
+
+컴포넌트 내부에 상태를 선언하고, 그 상태 변화에 따라 UI를 자동 갱신하는 훅이다.
+
+```tsx
+const [count, setCount] = useState(0);
+```
+
+useState()는 ```[state, setState]``` 형식의 2칸 짜리 배열을 반환한다.```[state[], setState()```가 반환) 0번 인덱스는 상태값 배열을 저장하고 1번 인덱스는 0번 인덱스의 상태값을 저장하기 위한 세터를 저장한다. 이때 세터는 클로저로 구현돼서 state 값을 캡슐화한다. → 컴포넌트 밖에서 state를 수정하면 안 되니까. → count를 직접 수정해도 렌더링에 반영하지 않는다. 리액트는 setState() 호출 시에만 재렌더링 요청을 인지한다.
+setState가 호출되면 렌더링 트리거가 작동해 해당 컴포넌트를 다음 렌더링 사이클에 재렌더링한다. ‘**다음**’ 렌더링 사이클에 **비동기적**으로 렌더링 하는 것이다. setState 호출시 즉각적으로 재렌더링된다고 착각해서는 안된다. 
+
+state는 props와 달리 컴포넌트 내부에 설정되며 내부에서만 관리하고, 변경 가능한 동적인 데이터를 담는다. 반면 props는 외부에서 전달받은 읽기 전용 데이터로 컴포넌트를 사용하기 위한 정적 설정값이다. 컴포넌트 바깥에서 값이 조정될 수는 있어도 컴포넌트 안에 전달되면 정적으로만 사용되는 고정된 값이다.
+
+```tsx
+function Parent() {
+  const [count, setCount] = useState(0);
+
+  return (
+    <Child count={count} onIncrement={() => setCount(count + 1)} />
+  );
+}
+
+function Child({ count, onIncrement }) {
+  return (
+    <>
+      <p>{count}</p>
+      <button onClick={onIncrement}>증가</button>
+    </>
+  );
+}
+
+```
+
+위 예시에서 Parent의 state가 정적인 props로 Child에 전달되는 것을 확인할 수 있다. Child 컴포넌트는 내부에서 직접 Parent의 state를 조작하지 않고, 읽기 전용 데이터로 UI를 세팅하는데 활용한다. Child의 onClick은 콜백으로 setCount(count + 1)을 받아 Parent 컴포넌트에 setCount(count + 1)을 요청하는 것이지 직접 상태변경 함수를 실행하는 것이 아니다.
+
+**Two-Way-Binding**
+
+UI와 데이터 모델이 연결되어 실시간으로 쌍방향 상호작용 하는 것.
+
+입력이 모델을 바꾸고 모델의 변화가 입력값 상태를 바꾼다.
+
+```tsx
+import { useState } from 'react';
+
+function TwoWayBindingExample() {
+  const [name, setName] = useState('');
+
+  const handleChange = (event) => {
+    setName(event.target.value);
+  };
+
+  return (
+    <div>
+      <input type="text" value={name} onChange={handleChange} />
+      <p>입력한 이름: {name}</p>
+    </div>
+  );
+}
+
+```
+
+위의 사례처럼 input 칸에 텍스트를 입력하면 실시간으로 입력 텍스트가 변하는 상황이 대표적인 예시이다. 사용자의 입력이 실시간으로 name 데이터에 반영되고, setName이 호출되었으므로 리액트가 다시 name의 상태 변화를 재렌더링하는 순환이 발생한다.
+
+원래 리액트는 단방향 바인딩 방식을 사용해 데이터 흐름이 명확하다는 게 장점이다. 그러나 이렇게 필요한 경우 명시적인 방법(상태관리 + 이벤트 핸들러)으로 양방향 바인딩을 직접 구현할 수 있다. 실시간 입력 반영, Form 상태 처리 또는 입력값이 즉각적으로 UI에 표시되어야 할 때 활용하면 된다.
