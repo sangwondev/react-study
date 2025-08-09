@@ -249,7 +249,8 @@ Props는 전통적 상속 구조를 따르지 않고 하향식으로 데이터�
 const [count, setCount] = useState(0);
 ```
 
-useState()는 ```[state, setState]``` 형식의 2칸 짜리 배열을 반환한다.```[state[], setState()```가 반환) 0번 인덱스는 상태값 배열을 저장하고 1번 인덱스는 0번 인덱스의 상태값을 저장하기 위한 세터를 저장한다. 이때 세터는 클로저로 구현돼서 state 값을 캡슐화한다. → 컴포넌트 밖에서 state를 수정하면 안 되니까. → count를 직접 수정해도 렌더링에 반영하지 않는다. 리액트는 setState() 호출 시에만 재렌더링 요청을 인지한다.
+useState()는 현재 상태값과 해당 값을 갱신하는 함수를 포함한 튜플을 반환한다. 0번 인덱스는 상태값 배열을 저장하고 1번 인덱스는 0번 인덱스의 상태값을 저장하기 위한 세터를 저장한다. 이때 상태는 리액트의 렌더링 컨텍스트(리액트 파이버)에 저장되며, setState()는 해당 상태 업데이트를 예약하는 함수다. 상태는 직접 접근하거나 수정할 수 없고, setState()를 통해서만 간접적으로 조작할 수 있다. 
+→ 컴포넌트 밖에서 state를 수정하면 안 되니까. → count를 직접 수정해도 렌더링에 반영하지 않는다. 리액트는 setState() 호출 시에만 재렌더링 요청을 인지한다.
 setState가 호출되면 렌더링 트리거가 작동해 해당 컴포넌트를 다음 렌더링 사이클에 재렌더링한다. ‘**다음**’ 렌더링 사이클에 **비동기적**으로 렌더링 하는 것이다. setState 호출시 즉각적으로 재렌더링된다고 착각해서는 안된다. 
 
 state는 props와 달리 컴포넌트 내부에 설정되며 내부에서만 관리하고, 변경 가능한 동적인 데이터를 담는다. 반면 props는 외부에서 전달받은 읽기 전용 데이터로 컴포넌트를 사용하기 위한 정적 설정값이다. 컴포넌트 바깥에서 값이 조정될 수는 있어도 컴포넌트 안에 전달되면 정적으로만 사용되는 고정된 값이다.
@@ -274,7 +275,7 @@ function Child({ count, onIncrement }) {
 
 ```
 
-위 예시에서 Parent의 state가 정적인 props로 Child에 전달되는 것을 확인할 수 있다. Child 컴포넌트는 내부에서 직접 Parent의 state를 조작하지 않고, 읽기 전용 데이터로 UI를 세팅하는데 활용한다. Child의 onClick은 콜백으로 setCount(count + 1)을 받아 Parent 컴포넌트에 setCount(count + 1)을 요청하는 것이지 직접 상태변경 함수를 실행하는 것이 아니다.
+위 예시에서 Parent의 state가 정적인 props로 Child에 전달되는 것을 확인할 수 있다. Child 컴포넌트는 내부에서 직접 Parent의 state를 조작하지 않고, 읽기 전용 데이터로 UI를 세팅하는데 활용한다. Child는 상태 변경 로직을 직접 가지고 있지는 않지만, props로 전달받은 콜백 함수를 실행함으로써 Parent의 상태를 변경하는 트리거 역할을 한다.
 
 **Two-Way-Binding**
 
@@ -305,3 +306,100 @@ function TwoWayBindingExample() {
 위의 사례처럼 input 칸에 텍스트를 입력하면 실시간으로 입력 텍스트가 변하는 상황이 대표적인 예시이다. 사용자의 입력이 실시간으로 name 데이터에 반영되고, setName이 호출되었으므로 리액트가 다시 name의 상태 변화를 재렌더링하는 순환이 발생한다.
 
 원래 리액트는 단방향 바인딩 방식을 사용해 데이터 흐름이 명확하다는 게 장점이다. 그러나 이렇게 필요한 경우 명시적인 방법(상태관리 + 이벤트 핸들러)으로 양방향 바인딩을 직접 구현할 수 있다. 실시간 입력 반영, Form 상태 처리 또는 입력값이 즉각적으로 UI에 표시되어야 할 때 활용하면 된다.
+
+## Lifting State Up, Computing Value
+
+상태 끌어올리기는 상태가 두 개 이상의 컴포넌트에서 필요할 때, 그 상태를 각각의 컴포넌트에 두지 않고 가장 가까운 공통 부모 컴포넌트로 이동시키는 것을 말한다.
+
+→ 여러 자식이 하나의 상태를 공유하기 때문에 컴포넌트 마다 값이 불일치하게 되는 문제를 방지할 수 있다.
+
+ 
+
+```jsx
+function Parent() {
+  const [value, setValue] = useState('');
+
+  return (
+    <>
+      <ChildA value={value} onChange={setValue} />
+      <ChildB value={value} />
+    </>
+  );
+}
+
+function ChildA({ value, onChange }) {
+  return <input value={value} onChange={e => onChange(e.target.value)} />;
+}
+
+function ChildB({ value }) {
+  return <p>{value}</p>;
+}
+```
+
+state를 부모 컴포넌트에서 한 번만 정의하고 자식 컴포넌트에 props로 넘기는 방식으로 동작한다. ChildA가 상태를 바꾸면 ChildB에도 자동으로 최신 값이 반영된다. → Single Source of Truth 확보
+
+단, 상태를 너무 위로 올리면 불필요한 리렌더링이 많아질 수 있다. 또 상태가 복잡해지면 상태관리 라이브러리(Redux, Zustand 등)로 대체하는 경우가 많다. Prop Drilling이 발생하기 때문이다.
+
+`App → Page → Section → Widget → Input`
+
+위와 같은 흐름으로 상태값이 props으로 전달될 때, Input에서 최종적으로 사용될 상태값을 건네기 위해 중간 컴포넌트들은 상태를 사용하지 않아도 props를 계속 전달해야 한다.
+
+**Computing Value**
+
+값을 미리 정의하지 않고 이미 정의한 다른 변수들의 연산 결과를 사용하는 변수를 말한다.
+
+## useRef() & portal
+
+렌더링에 영향을 미치지 않지만 변경되는 값을 할당할 때 사용한다. 또 `<input type=’file’ />`처럼 JS의 직접적인 접근을 금지하는 DOM 객체에 간접적으로 접근할 때도 `<input type='file' ref={testRef}>` 식으로 활용한다. 이때 `testRef.current` 값은 `<input type=’file’>` 의 DOM 객체가 된다.
+
+부모에서 자식 컴포넌트로 useRef()가 할당된 값을 넘길 수도 있다. 이런 경우 forwardRef로 자식 컴포넌트 함수를 감싸줘야 특수 prop인 ref를 넘겨받을 수 있다. 
+
+```jsx
+import { useImperativeHandle, useRef, forwardRef } from 'react';
+import { createPortal } from 'react-dom';
+import Button from './Button';
+
+const Modal = forwardRef (function Modal({ children , buttonCaption}, ref) {
+    const dialog = useRef();
+
+     useImperativeHandle(ref, () => {
+        return {
+            open() {
+                dialog.current.showModal();
+            }
+        };
+     });
+
+    return createPortal(
+        <dialog ref={dialog} className='backdrop:bg-stone-900/90 p-4 rounded-md shadow-md'>
+            {children}
+            <form method='dialog' className='mt-4 text-right'>
+                <Button>{buttonCaption}</Button>
+            </form>
+        </dialog>
+    , document.getElementById('modal-root'));
+});
+
+export default Modal;
+```
+
+forwardRef는 ref 전달 통로를 열어 주는 도우미 역할을 한다.
+
+### createPortal()
+
+포탈은 React 컴포넌트를 현재 DOM 계층이 아닌 **다른 DOM 노드에 렌더링**하는 기능이다.
+
+주로 모달, 툴팁, 드롭다운처럼 화면 최상단 레이어에 띄워야 하는 UI를 구현할 때 사용한다.
+
+부모 DOM의 `overflow`, `z-index` 같은 스타일 제약을 피하고, 레이아웃 구조와 독립된 위치에 배치할 수 있다.
+
+포탈로 렌더링해도 React 컴포넌트 트리 안에서는 여전히 부모-자식 관계를 유지하므로,
+
+상태 공유와 이벤트 버블링은 그대로 작동한다.
+
+```jsx
+return createPortal(
+  <MyModal />,
+  document.getElementById('modal-root') // index.html에 미리 정의된 타깃
+);
+```
