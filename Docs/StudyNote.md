@@ -403,3 +403,490 @@ return createPortal(
   document.getElementById('modal-root') // index.html에 미리 정의된 타깃
 );
 ```
+
+## Context Api
+
+prop drilling을 방지하기 위해 전역적으로 state context를 만들고 상위 컴포넌트에서 해당 객체를 consuming하는 하위 컴포넌트를 state context로 감싼다. 
+
+```jsx
+import { createContext } from "react";
+
+export const CartContext = createContext({
+    items: [],
+    addItemToCart: () => {},
+});
+```
+
+```jsx
+import { useState } from 'react';
+
+import Header from './components/Header.jsx';
+import Shop from './components/Shop.jsx';
+import Product from './components/Product.jsx';
+import { DUMMY_PRODUCTS } from './dummy-products.js';
+import { CartContext } from './store/shopping-cart-context.jsx';
+
+function App() {
+  const [shoppingCart, setShoppingCart] = useState({
+    items: [],
+  });
+
+  function handleAddItemToCart(id) {
+    setShoppingCart((prevShoppingCart) => {
+      const updatedItems = [...prevShoppingCart.items];
+
+      const existingCartItemIndex = updatedItems.findIndex(
+        (cartItem) => cartItem.id === id
+      );
+      const existingCartItem = updatedItems[existingCartItemIndex];
+
+      if (existingCartItem) {
+        const updatedItem = {
+          ...existingCartItem,
+          quantity: existingCartItem.quantity + 1,
+        };
+        updatedItems[existingCartItemIndex] = updatedItem;
+      } else {
+        const product = DUMMY_PRODUCTS.find((product) => product.id === id);
+        updatedItems.push({
+          id: id,
+          name: product.title,
+          price: product.price,
+          quantity: 1,
+        });
+      }
+
+      return {
+        items: updatedItems,
+      };
+    });
+  }
+
+  function handleUpdateCartItemQuantity(productId, amount) {
+    setShoppingCart((prevShoppingCart) => {
+      const updatedItems = [...prevShoppingCart.items];
+      const updatedItemIndex = updatedItems.findIndex(
+        (item) => item.id === productId
+      );
+
+      const updatedItem = {
+        ...updatedItems[updatedItemIndex],
+      };
+
+      updatedItem.quantity += amount;
+
+      if (updatedItem.quantity <= 0) {
+        updatedItems.splice(updatedItemIndex, 1);
+      } else {
+        updatedItems[updatedItemIndex] = updatedItem;
+      }
+
+      return {
+        items: updatedItems,
+      };
+    });
+  }
+
+  const ctxValue = {
+    items: shoppingCart.items,
+    addItemToCart: handleAddItemToCart
+  };
+
+  return (
+    <CartContext.Provider value={ctxValue}>
+      <Header
+        cart={shoppingCart}
+        onUpdateCartItemQuantity={handleUpdateCartItemQuantity}
+      />
+      <Shop>
+        {DUMMY_PRODUCTS.map((product) => (
+          <li key={product.id}>
+            <Product {...product} onAddToCart={handleAddItemToCart} />
+          </li>
+        ))}
+      </Shop>
+    </CartContext.Provider>
+  );
+}
+
+export default App;
+ 
+```
+
+`const CartContext`에 `createContext({ items: [], addItemToCart: () ⇒ {}})`를 할당해 컨텍스트를 만들고 상위 컴포넌트인 App에서 CartContext를 사용하는 하위 컴포넌트를 래핑하고 있다. <CartContext.Provider>는 createContext가 반환한 객체의 Provider라는 React 컴포넌트를 jsx 문법으로 사용하는 것이다. 접근 연산자로 구분되어 있어도 컴포넌트를 리턴하므로 사용 가능하다. state 뿐만 아니라 state를 다루는 핸들러도 App에서 정의해 콜백함수로 넘길 수 있다.
+
+**+props의 참조값 변경시 React의 리렌더 트리거가 동작한다.**
+
+**리렌더 트리거 2대 원칙**
+
+1. 자기 자신이 가진 state가 바뀌었을 때
+    
+    → useState, useReducer로 관리하는 값이 바뀌면 해당 컴포넌트 함수가 다시 호출됨.
+    
+2. 부모에서 내려준 props가 바뀌었을 때
+    
+    → props의 참조 비교(===)에서 다르면 “바뀌었다”고 판단 → 자식 함수 다시 호출.
+    
+
+state 변화 뿐만 아니라 객체를 props로 넘길 때, 위와 같이 `ctxValue`  객체 리터럴은 매번 새 객체로 초기화된다. 따라서 `<CartContext.Provider value={ctxValue}>`로 래핑한 자식 컴포넌트 중 useContext를 구독하는 컨슈머는 전부 재렌더된다.
+
+**+리터럴의 정확한 의미**
+
+리터럴 == 하드 코딩된 값 표기 방식,
+
+엄밀하게 말하면 리터럴 값이 할당된 변수는 그 자체로는 리터럴이라고 하기 어렵다.
+JS 객체/배열 리터럴({}, [])은 실행 시마다 새 참조를 생성한다. 
+
+```jsx
+import { CartContext } from '../store/shopping-cart-context.jsx';
+import { useContext } from 'react'
+
+export default function Cart({ onUpdateItemQuantity }) {
+  const {items} = useContext(CartContext);
+
+  const totalPrice = items.reduce(
+    (acc, item) => acc + item.price * item.quantity,
+    0
+  );
+  const formattedTotalPrice = `$${totalPrice.toFixed(2)}`;
+
+  return (
+    <div id="cart">
+      {items.length === 0 && <p>No items in cart!</p>}
+      {items.length > 0 && (
+        <ul id="cart-items">
+          {items.map((item) => {
+            const formattedPrice = `$${item.price.toFixed(2)}`;
+
+            return (
+              <li key={item.id}>
+                <div>
+                  <span>{item.name}</span>
+                  <span> ({formattedPrice})</span>
+                </div>
+                <div className="cart-item-actions">
+                  <button onClick={() => onUpdateItemQuantity(item.id, -1)}>
+                    -
+                  </button>
+                  <span>{item.quantity}</span>
+                  <button onClick={() => onUpdateItemQuantity(item.id, 1)}>
+                    +
+                  </button>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      <p id="cart-total-price">
+        Cart Total: <strong>{formattedTotalPrice}</strong>
+      </p>
+    </div>
+  );
+}
+```
+
+컴포넌트 내부의 state 값이 바뀔 때와 마찬가지로 useContext()를 할당한 context의 값이 바뀔 때에도 함수 컴포넌트가 재호출되며 렌더링이 진행된다. 
+
+특정 Context 래퍼로 하위 컴포넌트를 감싸는 방식은 전역적으로 사용되는 Context의 종류가 적을 때는 유용하다. 하지만 여러 Context가 공유되면 래퍼의 개수도 많아진다는 단점이 있다.
+
+### CortContext 상수를 넘겨주는 대신 CartContextProvider 함수 컴포넌트로 래핑해 State, Handler props 없애기
+
+```jsx
+import { createContext, useState } from 'react';
+
+import { DUMMY_PRODUCTS } from '../dummy-products.js';
+
+export const CartContext = createContext({
+  items: [],
+  addItemToCart: () => {},
+  updateItemQuantity: () => {},
+});
+
+export default function CartContextProvider({children}) {
+  const [shoppingCart, setShoppingCart] = useState({
+    items: [],
+  });
+
+  function handleAddItemToCart(id) {
+    setShoppingCart((prevShoppingCart) => {
+      const updatedItems = [...prevShoppingCart.items];
+
+      const existingCartItemIndex = updatedItems.findIndex(
+        (cartItem) => cartItem.id === id
+      );
+      const existingCartItem = updatedItems[existingCartItemIndex];
+
+      if (existingCartItem) {
+        const updatedItem = {
+          ...existingCartItem,
+          quantity: existingCartItem.quantity + 1,
+        };
+        updatedItems[existingCartItemIndex] = updatedItem;
+      } else {
+        const product = DUMMY_PRODUCTS.find((product) => product.id === id);
+        updatedItems.push({
+          id: id,
+          name: product.title,
+          price: product.price,
+          quantity: 1,
+        });
+      }
+
+      return {
+        items: updatedItems,
+      };
+    });
+  }
+
+  function handleUpdateCartItemQuantity(productId, amount) {
+    setShoppingCart((prevShoppingCart) => {
+      const updatedItems = [...prevShoppingCart.items];
+      const updatedItemIndex = updatedItems.findIndex(
+        (item) => item.id === productId
+      );
+
+      const updatedItem = {
+        ...updatedItems[updatedItemIndex],
+      };
+
+      updatedItem.quantity += amount;
+
+      if (updatedItem.quantity <= 0) {
+        updatedItems.splice(updatedItemIndex, 1);
+      } else {
+        updatedItems[updatedItemIndex] = updatedItem;
+      }
+
+      return {
+        items: updatedItems,
+      };
+    });
+  }
+
+  const ctxValue = {
+    items: shoppingCart.items,
+    addItemToCart: handleAddItemToCart,
+    updateItemQuantity: handleUpdateCartItemQuantity,
+  };
+
+  return <CartContext.Provider value={ctxValue}>
+    {children}
+  </CartContext.Provider>
+}
+```
+
+```jsx
+import Header from './components/Header.jsx';
+import Shop from './components/Shop.jsx';
+import Product from './components/Product.jsx';
+import { DUMMY_PRODUCTS } from './dummy-products.js';
+import CartContextProvider from './store/shopping-cart-context.jsx';
+
+function App() {
+  return (
+    <CartContextProvider>
+      <Header />
+      <Shop>
+        {DUMMY_PRODUCTS.map((product) => (
+          <li key={product.id}>
+            <Product {...product} />
+          </li>
+        ))}
+      </Shop>
+    </CartContextProvider>
+  );
+}
+
+	export default App;
+```
+
+CartContextProvider는 `<CartContext.Provider>{children}</CartContext.Provier>`를 반환한다. App에서 CartContextProvider를 임포트해 전체 컴포넌트를 감싸주면 위에서처럼 하위 컴포넌트에 props로 일일이 넘겨주지 않아도 된다. state와 handler를 모두 CartContextProvider 함수 안에 넣어 일원화한 덕이다.
+
+### useReducer()
+
+state + setState 패턴을 함수형 프로그래밍 방식으로 일반화한 훅. 내부 상태 관리 로직을 **reducer** 함수로 분리해서 복잡한 상태 업데이트를 명시적으로 처리할 수 있게 한다.
+
+useState는 편리하지만 핸들러가 많아질수록 지저분해진다. 프로세스가 중복되는 핸들러가 많아지면 useReducer를 고려해보는 게 좋다.
+
+```jsx
+setForm(prev => ({
+	...prev,
+	email: e.target.value
+}));
+```
+
+위 코드처럼 이전의 state를 받아 spread operation으로 프로퍼티를 채운 후 하나의 프로퍼티를 변경하거나 추가하는 핸들러가 많아지면 …prev를 받아 채우고, 특정 프로퍼티(email)을 변경하거나 새 값을 할당하는 로직이 늘게 된다. 
+
+이때 useReducer()를 사용하면 state 업데이트 로직을 컴포넌트 외부로 분리할 수 있다. 이렇게 하면 가독성이 좋아지고 업데이트 시 **어떤 액션**을 취했는지 명확하게 표현할 수 있다. 디버깅, 로깅, 테스트에 용이해진다.
+
+```jsx
+const [state, dispatch] = useReducer(reducer, initailState);
+```
+
+state → 현재 상태 
+
+dispatch(action) → 상태 변경을 트리거 
+
+reducer(state, action) → 새 상태를 반환하는 순수 함수
+
+initialState → 초기 상태 값
+
+```jsx
+import { useReducer } from "react";
+
+type State = { count: number };
+type Action = { type: "increment" } | { type: "decrement" };
+
+function reducer(state: State, action: Action): State {
+  switch (action.type) {
+    case "increment":
+      return { count: state.count + 1 };
+    case "decrement":
+      return { count: state.count - 1 };
+    default:
+      return state;
+  }
+}
+
+export default function Counter() {
+  const [state, dispatch] = useReducer(reducer, { count: 0 });
+
+  return (
+    <>
+      <p>Count: {state.count}</p>
+      <button onClick={() => dispatch({ type: "increment" })}>+</button>
+      <button onClick={() => dispatch({ type: "decrement" })}>-</button>
+    </>
+  );
+}
+```
+
+위 코드는 일반적인 useReducer 사용의 맥락을 보여준다. dispatch를 통해 상태 변경을 트리거하고 dispatch를 통해 실행되는 reducer 함수의 action 인자에 특정 type(컨벤션)을 할당해 action.type에 해당하는 로직을 실행시킨다.  
+
+쇼핑 카트를 활용하던 이전 맥락에 대입하면 다음과 같다. 
+
+```jsx
+import { createContext, useReducer } from "react";
+import { DUMMY_PRODUCTS } from "../dummy-products";
+
+export const CartContext = createContext({
+    items: [],
+    addItemToCart: () => { },
+    updateItemQuantity: () => { }
+});
+
+function shoppingCartReducer(state, action) {
+    if (action.type === 'ADD_ITEM') {
+        const updatedItems = [...state.items];
+        const existingCartItemIndex = updatedItems.findIndex(
+            (cartItem) => cartItem.id === action.payload
+        );
+        const existingCartItem = updatedItems[existingCartItemIndex];
+
+        if (existingCartItem) {
+            const updatedItem = {
+                ...existingCartItem,
+                quantity: existingCartItem.quantity + 1,
+            };
+            updatedItems[existingCartItemIndex] = updatedItem;
+        } else {
+            const product = DUMMY_PRODUCTS.find((product) => product.id === action.payload);
+            updatedItems.push({
+                id: action.payload,
+                name: product.title,
+                price: product.price,
+                quantity: 1,
+            });
+        }
+
+        return {
+            ...state,
+            items: updatedItems,
+        };
+    }
+
+    if (action.type === 'UPDATE_ITEM') {
+        const updatedItems = [...state.items];
+        const updatedItemIndex = updatedItems.findIndex(
+            (item) => item.id === action.payload.productId
+        );
+
+        const updatedItem = {
+            ...updatedItems[updatedItemIndex],
+        };
+
+        updatedItem.quantity += action.payload.amount;
+
+        if (updatedItem.quantity <= 0) {
+            updatedItems.splice(updatedItemIndex, 1);
+        } else {
+            updatedItems[updatedItemIndex] = updatedItem;
+        }
+
+        return {
+            ...state,
+            items: updatedItems,
+        };
+    }
+
+    return state;
+}
+
+export default function CartContextProvider({ children }) {
+    const [shoppingCartState, shoppingCartDispatch] = useReducer(
+        shoppingCartReducer,
+        {
+            items: [],
+        });
+
+    function handleAddItemToCart(id) {
+        shoppingCartDispatch({
+            type: 'ADD_ITEM',
+            payload: id
+        });
+    }
+
+    function handleUpdateCartItemQuantity(productId, amount) {
+        shoppingCartDispatch({
+            type: 'UPDATE_ITEM',
+            payload: {
+                productId,
+                amount
+            }
+        });
+    }
+
+    const ctxValue = {
+        items: shoppingCartState.items,
+        addItemToCart: handleAddItemToCart,
+        updateItemQuantity: handleUpdateCartItemQuantity
+    };
+
+    return <CartContext.Provider value={ctxValue}>
+        {children}
+    </CartContext.Provider>
+}
+```
+
+### useReducer() 정리
+
+useReducer() → 상태 전이(state transition)를 함수로 구현
+
+reducer() → FSM(Finite State Machine)의 전이 함수(transition function) 역할(type을 통한 로직 할당)
+
+dispatch → 이벤트 발생(action) 트리거
+
+React는 dispatch가 호출되면 reducer를 실행해 새 state 객체를 만든 후 state를 업데이트 해 반환(state가 변경되었으므로 렌더링)한다.
+
+useReducer()은 state 필드가 많고 state 핸들러의 규칙이 복잡하거나 분기가 많을 때 사용하면 좋다. 여러 컴포넌트에서 동일한 상태 변화 로직을 써야 할 때도 고려할 수 있다. state 함수의 분기가 많을 때는 switch-case 문을 활용하면 좋다.
+
+액션 타입으로 추적이 가능해 디버깅/로깅에 유리하고 재사용도가 높다.
+
+### useReducer 주의
+
+dispatch는 비동기 업데이트 트리거이다. useState()와 마찬가지로 state가 즉시 변하지는 않는다.
+
+state 객체의 불변성을 유지하면서 업데이트 해야 하기 때문에 state = ‘a’;처럼 직접 수정하면 렌더링되지 않는다.
+
+단순 상태 업데이트면 useState()가 낫다. 동일한 로직으로 …prev을 처리하는 핸들러가 많아지는 것처럼 복잡도가 높아지는 상황에만 고려하자.
