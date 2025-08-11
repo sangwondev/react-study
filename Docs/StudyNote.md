@@ -1124,3 +1124,32 @@ export default function DeleteConfirmation({ onConfirm }) {
 3. 렌더 아웃풋에 반응하는 DOM 조작: focus, scroll, modal open/close 등
 
 하지만, **순수 계산/파생값**은 가능하면 **렌더 중 계산(또는 useMemo)** 처리하고 effect를 피한다.
+
++디테일
+
+`useEffect()` 를 쓸 때 `setState()` 는 deps에 안 넣어도 상관없다. React가 `setState()` 에는 항상 같은 참조를 주기 때문이다.
+
+그런데 `setState()` 를 사용해 `State` 값을 **읽으면 반드시 deps에 `State` 값을 넣어줘야 한다.**
+
+```jsx
+// x를 읽지 않음
+useEffect(() => {
+  const id = setInterval(() => {
+    setX(prev => prev + 1); // prev만 사용
+  }, 1000);
+  return () => clearInterval(id);
+}, []); // OK
+
+// x를 직접 읽음 → deps에 x 넣어야 함
+useEffect(() => {
+  if (x > 10) setX(0);
+}, [x]); // OK (조건 없으면 무한루프)
+```
+
+함수, 객체, 배열은 그냥 deps에 넣으면 ‘참조 비교’가 문제를 일으킨다.
+
+`ref` 는 객체 참조가 안정적이어서 deps에 넣지 않아도 된다. `ref.current`  값 변경은 렌더도, deps 변화도 만들지 않는다.
+
+클린업을 습관화하자. → 타이머/리스너/구독/AbortController는 return () ⇒ {…}로 정리한다.
+
+클린업을 안 하면 effect 재실행 때 중복 등록/경합으로 스택 오버플로가 발생할 수 있다.
