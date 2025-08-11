@@ -890,3 +890,237 @@ dispatch는 비동기 업데이트 트리거이다. useState()와 마찬가지�
 state 객체의 불변성을 유지하면서 업데이트 해야 하기 때문에 state = ‘a’;처럼 직접 수정하면 렌더링되지 않는다.
 
 단순 상태 업데이트면 useState()가 낫다. 동일한 로직으로 …prev을 처리하는 핸들러가 많아지는 것처럼 복잡도가 높아지는 상황에만 고려하자.
+
+## useEffect()
+
+side effect는 렌더링(순수 계산) 밖의 일을 말한다. I/O(geolocation, fetch), 타이머, DOM 직접 조작, 구독/리스너 등록·해제, 로그/측정 등이 사이드 이펙트에 해당한다. `useEffect()` 는 커밋 후 비동기 적으로 실행 된다.
+
+렌더 → DOM 커밋 → 브라우저가 그릴 기회 → useEffect() 실행
+
++useLayoutEffect()는 커밋 직후, 브라우저가 그리기 전에 동기화를 진행한다(레이아웃 읽고 DOM 조작이 필요할 때).
+
+![image.png](./img/placePicker.png)
+
+```jsx
+function App() {
+  const modal = useRef();
+  const selectedPlace = useRef();
+  const [availablePlaces, setAvailablePlaces] = useState([]);
+  const [pickedPlaces, setPickedPlaces] = useState([]);
+
+  navigator.geolocation.getCurrentPosition((position) => {
+    const sortedPlaces = sortPlacesByDistance(
+      AVAILABLE_PLACES, 
+      position.coords.latitude, 
+      position.coords.longitude)
+      
+      setAvailablePlaces(sortedPlaces); 
+  });
+
+  function handleStartRemovePlace(id) {
+    modal.current.open();
+    selectedPlace.current = id;
+  }
+
+  function handleStopRemovePlace() {
+    modal.current.close();
+  }
+
+  function handleSelectPlace(id) {
+    setPickedPlaces((prevPickedPlaces) => {
+      if (prevPickedPlaces.some((place) => place.id === id)) {
+        return prevPickedPlaces;
+      }
+      const place = AVAILABLE_PLACES.find((place) => place.id === id);
+      return [place, ...prevPickedPlaces];
+    });
+  }
+
+  function handleRemovePlace() {
+    setPickedPlaces((prevPickedPlaces) =>
+      prevPickedPlaces.filter((place) => place.id !== selectedPlace.current)
+    );
+    modal.current.close();
+  }
+
+  return (
+    <>
+      <Modal ref={modal}>
+        <DeleteConfirmation
+          onCancel={handleStopRemovePlace}
+          onConfirm={handleRemovePlace}
+        />
+      </Modal>
+
+      <header>
+        <img src={logoImg} alt="Stylized globe" />
+        <h1>PlacePicker</h1>
+        <p>
+          Create your personal collection of places you would like to visit or
+          you have visited.
+        </p>
+      </header>
+      <main>
+        <Places
+          title="I'd like to visit ..."
+          fallbackText={'Select the places you would like to visit below.'}
+          places={pickedPlaces}
+          onSelectPlace={handleStartRemovePlace}
+        />
+        <Places
+          title="Available Places"
+          places={AVAILABLE_PLACES}
+          onSelectPlace={handleSelectPlace}
+        />
+      </main>
+    </>
+  );
+}
+
+export default App;
+```
+
+위 앱 컴포넌트에서는 다음 코드가 side effect를 발생시킨다.
+
+```jsx
+  const [availablePlaces, setAvailablePlaces] = useState([]);
+  
+  navigator.geolocation.getCurrentPosition((position) => {
+    const sortedPlaces = sortPlacesByDistance(
+      AVAILABLE_PLACES, 
+      position.coords.latitude, 
+      position.coords.longitude)
+      
+      setAvailablePlaces(sortedPlaces); 
+  });
+```
+
+App이 실행되면 app은 `sortedPlaces` 값을 연산해 `availablePlaces`에 할당하려고 하고, 연산이 실행되어 `availablePlaces`에 할당되면 `state`가 변해 App이 재실행되는 무한 루프가 발생한다.
+
+```jsx
+  useEffect(() => {
+    navigator.geolocation.getCurrentPosition((position) => {
+      const sortedPlaces = sortPlacesByDistance(
+        AVAILABLE_PLACES,
+        position.coords.latitude,
+        position.coords.longitude)
+
+      setAvailablePlaces(sortedPlaces);
+    });
+  }, []);
+  
+  useEffect(() => {
+    const storedIds = JSON.parse(localStorage.getItem('selectedPlaces')) || [];
+    const storedPlaces = storedIds.map(id => 
+      AVAILABLE_PLACES.find((place) => place.id === id));
+
+    setPickedPlaces(storedPlaces);
+  }, []);
+```
+
+위의 `useEffect()`의 좋은 사용 사례다. `getCurrentPosition()`의 콜백 라인이 전부 실행돼야 렌더링에 영향을 미치는 `state`가 변경되기 때문에 App 컴포넌트의 동작이 끝난 뒤에 다시 렌더링 되는 것을 보장한다. 
+
+하지만 아래의 `useEffect` 는 첫 함수 라인이 콜백없이 즉각적으로 실행된다. 이런 경우 App 컴포넌트의 실행 사이클이 완전히 종료되지 않은 시점에 해당 라인이 실행될 여지가 있기 때문에 `useEffect`를 사용해도 예상치 못한 에러를 만들 수 있다.
+
+```jsx
+
+function App() {
+  const storedIds = JSON.parse(localStorage.getItem('selectedPlaces')) || [];
+  const storedPlaces = storedIds.map(id =>
+    AVAILABLE_PLACES.find((place) => place.id === id));
+  const [pickedPlaces, setPickedPlaces] = useState(storedPlaces);
+  
+  ...}
+```
+
+차라리 위와 같은 방식으로 값 할당 순서를 앞에 둬 `pickedPlaces` 의 `state` 의 초기값을 미리 `storedPlaces` 에 할당해두는 게 좋다.
+
+```jsx
+  const storedIds = JSON.parse(localStorage.getItem('selectedPlaces')) || [];
+  const storedPlaces = storedIds.map(id =>
+    AVAILABLE_PLACES.find((place) => place.id === id));
+    
+  function App() {
+	  const [pickedPlaces, setPickedPlaces] = useState(storedPlaces); 
+	  ...
+  }
+```
+
+만약 해당 값들이 App 컴포넌트 안에서 매번 재실행 되어야 할 필요가 없다면 컴포넌트 바깥에 전역 변수로 선언해서 컴포넌트 실행과 무관하게 사용하는 게 가장 좋다.
+
+```jsx
+import { useRef } from 'react';
+import { createPortal } from 'react-dom';
+
+function Modal({ open, children }) {
+  const dialog = useRef();
+
+  if (open) {
+    dialog.current.showModal();
+  } else {
+    dialog.current.close();
+  }
+
+  return createPortal(
+    <dialog className="modal" ref={dialog}>
+      {children}
+    </dialog>,
+    document.getElementById('modal')
+  );
+};
+
+export default Modal;
+```
+
+위 상황에서도 side effect가 발생한다. `dialog` 에 할당되어야 할 ref값인 dialog 객체가 return이 반환되기 전에 선언되고 이후에 if문의 실행 흐름이 있으므로 `dialog.current`  호출 시에 `dialog.current === undefined` 가 된다. 위 예시에서는 렌더링 시점과 연결되지 않는 ref값을 렌더링과 동기화하기 위해 `useEffect()`를 사용했다.
+
+`useEffect()`는 `state, ref`값에 담기는 `DOM 객체, props, 해당 객체들을 활용하는 로직` 등을 `return문 이하의 실행 흐름`과 `동기화`한다.
+
+### useEffect()의 dependencies 배열
+
+쉽게 말해서 useEffect() 내에서 활용하는 function(useEffect 외부에 정의된 함수), state, props, ref, context values 등을 말한다.
+
+이때 함수를 그냥 dependencies로 두면 무한 호출 문제가 발생할 수 있다. 함수는 컴포넌트가 호출될 때마다 객체로 매번 재설정되기 때문이다. 함수를 가리키는 주소 포인터가 매번 변경돼서 dependencies도 해당 함수가 매번 바뀐 것으로 인식하고 `useEffect()`함수를 재실행시킨다. 그리고 `useEffect()`내에서 `state`가 변경되면 App 컴포넌트가 재호출되므로 순환 참조에 빠질 위험이 있다.
+
+```jsx
+export default function DeleteConfirmation({ onConfirm }) {
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      onConfirm();
+    }, 3000);
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [onConfirm, onCancel]);
+```
+
+위 함수가 실행되면 dependencies 내의 함수인 onConfirm이 무한 호출될 수 있다. 이런 상황을 막기 위해 활용하는 훅이 useCallback이다.
+
+**useCallback()**
+
+```jsx
+ const handleRemovePlace = useCallback(function handleRemovePlace() {
+    setPickedPlaces((prevPickedPlaces) =>
+      prevPickedPlaces.filter((place) => place.id !== selectedPlace.current)
+    );
+    setModalIsOpen(false);
+
+    const storedIds = JSON.parse(localStorage.getItem('selectedPlaces')) || [];
+    localStorage.setItem('selectedPlaces', JSON.stringify(storedIds.filter((id) => {
+      id !== selectedPlace.current
+    })));
+  }, []);
+```
+
+여기서는 `const handleRemovePlace` 에 deps 함수를 할당해 단일 참조로 만들었다. 이때 deps 함수를 `useCallback()` 으로 래핑하면 된다. `useCallbakc()`도 첫번째 인자로 호출 시 실행할 함수를 받고, 두번째 인자로 의존성 배열을 받는다. 여기서 의존성 배열은 `useEffect()` 의 사용 맥락과 동일하다.
+
+### 핵심 정리
+
+언제 `useEffect()` 를 쓸까?
+
+1. 외부와 동기화: 이벤트 리스너 등록/해제, 타이머, 인터벌, 웹소켓/구독, DOM API 직접 호출, 측정/로그
+2. 비동기 데이터: fetch 후 setState(클린업으로 race condition 방지)
+3. 렌더 아웃풋에 반응하는 DOM 조작: focus, scroll, modal open/close 등
+
+하지만, **순수 계산/파생값**은 가능하면 **렌더 중 계산(또는 useMemo)** 처리하고 effect를 피한다.
