@@ -1464,6 +1464,106 @@ function test(newValue) {
 - 핸들러 안에 여러 setState가 있으면 **한 번의 렌더로 묶여서 batching된다.**
 - `render()` 는 VDOM 계산이고, 커밋 후에 진짜 DOM이 바뀐다.
 
+## HTTP처리
+
+HTTP를 송수신하려면 시간이 걸리기 때문에 함수 컴포넌트는 송수신한 HTTP 데이터를 컴포넌트에 반영하기 위해 비동기 동작을 수행해야 한다. 바닐라 JS에서는 이럴 경우 await를 사용하지만 리액트의 컴포넌트 함수는 async 키워드로 감쌀 수 없기 때문에 리액트 컴포넌트 함수는 `.then(() => {})` 을 활용한다.
+
+```jsx
+import Places from './Places.jsx';
+import {useState, useEffect} from 'react'
+
+const places = localStorage.getItem('places');
+
+export default function AvailablePlaces({ onSelectPlace }) {
+  const [availablePlaces, setAvailablePlaces] = useState([]);
+
+  
+  fetch('http://localhost:3000/places')
+  .then((response) => {
+    return response.json();
+  }).then((resData) => {
+    setAvailablePlaces(resData.places);
+  });
+
+  return (
+    <Places
+      title="Available Places"
+      places={availablePlaces}
+      fallbackText="No places available."
+      onSelectPlace={onSelectPlace}
+    />
+  );
+}
+```
+
+하지만 위 코드는 문제가 있다. fetch를 하게 되면 availablePlaces의 데이터가 바뀌어서 함수가 재호출되고 이 사이클이 무한 반복된다. 그래서 fetch의 결과는 다음과 같이 useEffect로 감싸줘야 한다.
+
+```jsx
+useEffect(() => {
+  fetch('http://localhost:3000/places')
+  .then((response) => {
+    return response.json();
+  }).then((resData) => {
+    setAvailablePlaces(resData.places);
+  })}, []);
+```
+
+useEffect 한에서는 내장 함수로 async 키워드 함수를 사용할 수 있기 때문에 다음처럼 async await를 활용해 리팩토링하면 보기 좋다.
+
+```jsx
+useEffect(() => {
+    async function fetchPlaces() {
+      const response = await fetch('http://localhost:3000/places')
+      const resData = await response.json();
+      setAvailablePlaces(resData.places);
+    }
+    fetchPlaces();
+  }, []);
+```
+
+여기에 더해 비동기 HTTP 처리 시에는 에러 처리가 필수이기 때문에 다음과 같이 개선할 수 있다.
+
+```jsx
+export async function fetchAvailablePlaces() {
+    const response = await fetch('http://localhost:3000/places')
+    const resData = await response.json();
+
+    if (!response.ok) {
+        throw new Error('Failed to fetch places');
+    }
+    return resData.places;
+}
+// fetchAvailablePlaces()는 외부에 정의---------------------------------------------------------------------
+
+useEffect(() => {
+    async function fetchPlaces() {
+      setIsFetching(true);
+      try {
+        const places = await fetchAvailablePlaces();
+
+        navigator.geolocation.getCurrentPosition((position) => {
+          const sortedPlaces = sortPlacesByDistance(
+            places,
+            position.coords.latitude,
+            position.coords.longitude,
+          );
+          setAvailablePlaces(sortedPlaces);
+          setIsFetching(false);
+        });
+
+      } catch (error) {
+        setError({
+          message: error.message ||
+            'Could not fetch places, please try again later'
+        });
+        setIsFetching(false);
+      }
+    }
+    fetchPlaces();
+  }, []);
+```
+``setIsFetching()``은 await를 틱 경계에 두고 구분되어 있기 때문에 한 ``useEffect()`` 내에서 의도대로 두 번 실행된다.
+
 ## + 리액트 훅 사용 패턴 정리
 
 ## useState
