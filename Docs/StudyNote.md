@@ -1715,3 +1715,80 @@ useEffect(() => {
 ---
 
 훅 사용이 헷갈리면 **“렌더링 + 데이터? vs 렌더 이후 동기화?”**를 먼저 구분하고, 거기에 맞는 훅을 고르면 된다.
+
+## 커스텀 훅
+
+훅 여러 개를 조합해 커스텀 훅을 만들 수 있다. 
+
+```jsx
+function fetchData() {
+  useEffect(() => {
+    async function fetchPlaces() {
+      setIsFetching(true);
+      try {
+        const places = await fetchUserPlaces();
+        setUserPlaces(places);
+      } catch (error) {
+        setError({ message: error.message || 'Failed to fetch user places.' });
+      }
+
+      setIsFetching(false);
+    }
+
+    fetchPlaces();
+  }, []);
+}
+```
+
+`fetchData()`는 `useEffect()`로 place 자료를 백엔드에서 받아오는 로직을 래핑하고 있다. 하지만 한가지 문제가 있다. setIsFetching을 state 함수로 가지고 있지 않은 컴포넌트에서는 사용할 수 없기 때문이다.같은 맥락에서 해당 함수는 place라는 위치 자료를 서버에서 받아오는 역할밖에 하지 못한다. 커스텀 훅은 컴포넌트와 마찬가지로 재사용성이 있어야 한다. 서버에서 데이터를 받아와서 컴포넌트 내부의 특정 `state`에 세팅하는, 좀 더 범용적인 함수로 만드려면 어떻게 해야할까?  
+
+
+```jsx
+import { useEffect, useState } from 'react';
+
+export function useFetch(fetchFn, initialValue) {
+  const [isFetching, setIsFetching] = useState();
+  const [error, setError] = useState();
+  const [fetchedData, setFetchedData] = useState(initialValue);
+
+  useEffect(() => {
+    async function fetchData() {
+      setIsFetching(true);
+      try {
+        const data = await fetchFn();
+        setFetchedData(data);
+      } catch (error) {
+        setError({ message: error.message || 'Failed to fetch data.' });
+      }
+
+      setIsFetching(false);
+    }
+
+    fetchData();
+  }, [fetchFn]);
+
+  return {
+    isFetching,
+    fetchedData,
+    setFetchedData,
+    error
+  }
+}
+```
+
+커스텀 훅을 사용하면 위의 문제를 해결할 수 있다. `isFetching` 은 fetching 전후의 렌더링 명령 담당, `fetchedData` 는 데이터, `error` 는 에러 처리를 위해 정의됐다. `fetchFn` 으로 들어오는 인자는 fetch함수가 되어 데이터를 받기 위한 핸들러이다. 
+
+커스텀 훅을 사용하는 컴포넌트에서 세터를 조작해야 할 필요가 있다면 세터도 넘길 수 있다. 또한 동일한 커스텀 훅을 동시적으로, 여러 컴포넌트에서 호출해 사용하는 환경에서도 각 커스텀 훅에는 독립성이 보장된다.
+
+이런 독립성은 JS가 아니라 리액트가 보장하는 것이다. 리액트의 각 컴포넌트는 VDOM 트리의 한 노드로 개별적인 Fiber 인스턴스를 갖는다. 그리고 Fiber 인스턴스는 개별적인 훅 상태 슬롯을 따로 또 가진다.
+
+훅이 반환하는 함수의 참조는 매 렌더마다 새로 만들어진다. 커스텀 훅에도 안정 참조가 필요하다면 useCallback()으로 래핑해 고정해야 한다. 
+
+훅 내부에서 만든 핸들러는 정의 시점의 렉시컬 스코프를 캡처(클로저)하지만 상태값 자체는 리액트가 저장/제공하는 것이다. 클로저가 자체적으로 커스텀 훅의 state를 직접 저장하는 게 아니다. 
+
+### Fiber의 독립성 보장 시스템
+
+1. 리액트는 각 컴포넌트 인스턴스마다 하나의 Fiber를 만든다.
+2. 컴포넌트가 훅을 호출하면 리액트는 Fiber의 훅 상태 슬롯의 연결 리스트를 만든다.(그렇기 때문에 호출 순서가 중요하다.)
+3. 커스텀 훅은 훅 호출 묶음의 함수일 뿐이다. Fiber 훅 슬롯에 커스텀 훅이 직접 할당되는 게 아니다. 커스텀 훅 내부에서 호출하는 네이티브 훅들이 커스텀 훅에서 호출된 순서대로 Fiber 훅 슬롯에 등록되는 것 뿐이다.
+4. 결과적으로 동일한 커스텀 훅이 여러 컴포넌트에서 동시적으로 사용돼도, 각 컴포넌트의 Fiber가 따로 있으니 독립성이 보장된다.
