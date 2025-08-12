@@ -1153,3 +1153,465 @@ useEffect(() => {
 클린업을 습관화하자. → 타이머/리스너/구독/AbortController는 return () ⇒ {…}로 정리한다.
 
 클린업을 안 하면 effect 재실행 때 중복 등록/경합으로 스택 오버플로가 발생할 수 있다.
+
+## Behind The Scene
+
+리액트 동작 원리 일부를 알아보자.
+
+### 리액트는 어떻게 DOM을 업데이트할까?
+
+컴포넌트 개념을 학습할 때 다뤘던 개념이다. HTML에 정의된 `<script type="module" src="/src/main.jsx"></script>` 가 실행되면 브라우저는 아래의 main.jsx 스크립트를 실행한다.
+
+```html
+<div id="root"></div>
+<script type="module" src="/src/main.jsx"></script>
+```
+
+```jsx
+import ReactDOM from 'react-dom/client';
+
+import App from './App.jsx';
+import './index.css';
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+```
+
+main.jsx는 DOM과 VDOM의 다리 역할을 하는 `ReactDOM` 객체를 통해 id를 root로 하는 `<div>` 객체를 찾아 루트로 삼고 루트에 App 컴포넌트를 렌더링한다.
+
+```jsx
+import { useState } from 'react';
+
+import Counter from './components/Counter/Counter.jsx';
+import Header from './components/Header.jsx';
+import { log } from './log.js';
+
+function App() {
+  log('<App /> rendered');
+
+  const [enteredNumber, setEnteredNumber] = useState(0);
+  const [chosenCount, setChosenCount] = useState(0);
+
+  function handleChange(event) {
+    setEnteredNumber(+event.target.value);
+  }
+
+  function handleSetClick() {
+    setChosenCount(enteredNumber);
+    setEnteredNumber(0);
+  }
+
+  return (
+    <>
+      <Header />
+      <main>
+        <section id="configure-counter">
+          <h2>Set Counter</h2>
+          <input type="number" onChange={handleChange} value={enteredNumber} />
+          <button onClick={handleSetClick}>Set</button>
+        </section>
+        <Counter initialCount={chosenCount} />
+      </main>
+    </>
+  );
+}
+
+export default App;
+```
+
+앱 컴포넌트가 정의한 함수, 반환하는 또 다른 앱 컴포넌트들이 트리 구조로 실행된다. 
+
+![image.png](./img/behindTheScenes.png)
+
+![image.png](./img/testAppTree.png)
+
+크롬 개발자 도구를 통해(log 함수를 앱 내에 의도적으로 정의) 각 컴포넌트들이 트리 구조로 실행된다는 사실을 확인할 수 있다. 위 웹 페이지를 렌더링하기 위해 최상위 컴포넌트인 App부터 PlusIcon 까지 각 컴포넌트들이 순차적으로 실행됐다.
+
+![image.png](./img/chromeDevTree.png)
+
+크롬 리액트 확장 플러그인의 Profiler 기능을 사용하면 앱에서 상호작용이 발생할 때 렌더링 트리가 어떻게 동작하는지 순차적으로 확인할 수 있다.
+
+### 리액트의 memo 활용하기
+
+memo로 컴포넌트 함수를 래핑해 사용할 수 있다. memo는 해당 컴포넌트의 props를 비교해 이전 렌더링 사이클과 다른 props가 다른 props가 들어오는 경우에만 컴포넌트를 실행한다. 이전 props를 메모이제이션하고 이전 렌더링 사이클에 memo와 현재 사이클의 props를 비교하는 방식이다. 
+
+```jsx
+const Counter = memo(function Counter({ initialCount }) {
+  log('<Counter /> rendered', 1);
+  const initialCountIsPrime = isPrime(initialCount);
+
+  const [counter, setCounter] = useState(initialCount);
+
+  function handleDecrement() {
+    setCounter((prevCounter) => prevCounter - 1);
+  }
+
+  function handleIncrement() {
+    setCounter((prevCounter) => prevCounter + 1);
+  }
+
+  return (
+    <section className="counter">
+      <p className="counter-info">
+        The initial counter value was <strong>{initialCount}</strong>. It{' '}
+        <strong>is {initialCountIsPrime ? 'a' : 'not a'}</strong> prime number.
+      </p>
+      <p>
+        <IconButton icon={MinusIcon} onClick={handleDecrement}>
+          Decrement
+        </IconButton>
+        <CounterOutput value={counter} />
+        <IconButton icon={PlusIcon} onClick={handleIncrement}>
+          Increment
+        </IconButton>
+      </p>
+    </section>
+  );
+});
+
+export default Counter;
+```
+
+위 예시처럼 활용하면 `{ initialCount }` 가 바뀌지 않는 한 memo로 래핑된 Counter 컴포넌트를 재실행하지 않는다.
+
+하지만 `memo()`를 남용하면 안된다. `memo()` 가 props를 체크하는 데도 비용이 들기 때문이다. props가 빈번하게 바뀌는 컴포넌트에 사용하면 불필요한 체크 연산만 늘어난다. 부모 컴포넌트를 memo()로 래핑하면 자식 컴포넌트에까지 영향을 미치니 props가 잘 바뀌지 않는 부모 컴포넌트에 한 번만 사용하는 게 좋다. 부모 컴포넌트를 재렌더링하지 않으면 자식 컴포넌트들도 다시 그리지 않으니 렌더링을 효율화할 수 있다.
+
+UI 이미지가 변하지 않는 버튼의 경우 버튼 클릭 이후의 상호작용을 버튼 컴포넌트와 분리해 렌더링을 효율화할 수 있다. 버튼에서 UI만 남기고 버튼을 memo하면 버튼 클릭 시마다 버튼 재랜더링을 생략하고 관련 로직만 분리해서 실행할 수 있다. 대신 버튼 onClick 시에 넘어가는 핸들러를 () ⇒ {}와 같은 인라인 핸들러가 아닌 `useCallback()` 으로 래핑한 핸들러 함수로 바꿔 props 참조값 변경을 방지하자.
+
+### useMemo()
+
+`useMemo()` 는 memo된 컴포넌트 안에서 특정 연산을 위해 외부 함수를 호출하는 경우 사용한다.
+
+```jsx
+import { useState, memo, useCallback, useMemo } from 'react';
+
+import IconButton from '../UI/IconButton.jsx';
+import MinusIcon from '../UI/Icons/MinusIcon.jsx';
+import PlusIcon from '../UI/Icons/PlusIcon.jsx';
+import CounterOutput from './CounterOutput.jsx';
+import { log } from '../../log.js';
+
+function isPrime(number) {
+  log(
+    'Calculating if is prime number',
+    2,
+    'other'
+  );
+  if (number <= 1) {
+    return false;
+  }
+
+  const limit = Math.sqrt(number);
+
+  for (let i = 2; i <= limit; i++) {
+    if (number % i === 0) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+const Counter = memo(function Counter({ initialCount }) {
+  log('<Counter /> rendered', 1);
+  const initialCountIsPrime = useMemo(() => 
+    isPrime(initialCount), [initialCount]);
+
+  const [counter, setCounter] = useState(initialCount);
+
+  const handleDecrement = useCallback(function handleDecrement() {
+    setCounter((prevCounter) => prevCounter - 1);
+  }, []);
+
+  const handleIncrement = useCallback(function handleIncrement() {
+    setCounter((prevCounter) => prevCounter + 1);
+  }, []);
+
+  return (
+    <section className="counter">
+      <p className="counter-info">
+        The initial counter value was <strong>{initialCount}</strong>. It{' '}
+        <strong>is {initialCountIsPrime ? 'a' : 'not a'}</strong> prime number.
+      </p>
+      <p>
+        <IconButton icon={MinusIcon} onClick={handleDecrement}>
+          Decrement
+        </IconButton>
+        <CounterOutput value={counter} />
+        <IconButton icon={PlusIcon} onClick={handleIncrement}>
+          Increment
+        </IconButton>
+      </p>
+    </section>
+  );
+});
+
+export default Counter;
+```
+
+위 코드에서 `isPrime` 의 재연산을 막기 위해 `const initialCountIsPrime = useMemo(() => 
+    isPrime(initialCount), [initialCount]);` 와 같이 래핑한 것을 확인할 수 있다. memo 함수 내에서 호출하는 외부 함수가 연산 비용이 높은 함수라면 `useMemo` 사용을 고려해볼 수 있다. `useMemo`의 두번째 인자로 들어가는 배열은 다른 연산 최적화 훅과 마찬가지로 deps 배열이다.
+
+**정리**
+
+memo, useMemo 등 렌더링 최적화 훅은 UX를 고려해 사용해야 한다. 렌더링 우선순위 변경, 데이터 요청 지연 등은 연산 효율성 면에서는 최적화지만 유저 경험에는 악영향을 미칠 수 있다. 유저는 앱이 버벅이거나 렉이 걸렸다고 느낄 수 있기 때문이다. 
+
+최적화는 보통 다음 절차로 이뤄진다.
+
+1. 측정: 어디서 병목이 생기는지 계측 (Lighthouse, React Profiler 등)
+2. 분석: 병목 현상이 UX에 어떤 영향을 주는지 체크
+3. 행동: 최적화가 UX에 미치는 트레이드오프를 예상해서 수정할 지, 그대로 둘 지 결정
+
+→ 렌더링 성능 최적화 시에는 CS와 UX가 함께 고려되어야 한다.
+
+## 리액트의 VDOM 활용
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <script type="module">import { injectIntoGlobalHook } from "/@react-refresh";
+injectIntoGlobalHook(window);
+window.$RefreshReg$ = () => {};
+window.$RefreshSig$ = () => (type) => type;</script>
+
+    <script type="module" src="/@vite/client"></script>
+
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/logo.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Behind the Scenes</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
+```
+
+위에서 확인했던 Behind the Scenes의 페이지 소스를 보면 위와 같이 id=’root’인 div 뿐이다. 그런데 개발자 도구로 페이지 소스를 보면 현재 실행 중인 페이지는 리액트의 컴포넌트를 모두 반영하고 있다.
+
+→ 앱 실행 시 리액트가 컴포넌트 모듈을 다시 HTML으로 작성해 DOM에 반영한다.
+
+리액트는 VDOM의 스냅샷을 생성, 이전 DOM과 비교해 필요한 부분만 다시 작성한다. 리액트의 렌더링 프로세스는 다음과 같다.
+
+1. 컴포넌트 트리 만들기
+2. 타겟 HTML 코드의 Virtual Snapshot 생성
+3. 렌더링 전에 새 VDOM의 스냅샷을 2번의 이전 스냅샷과 비교한다.(HTML diff)
+
+### State Batch
+
+리액트는 성능을 위해 여러 개의 상태 업데이트를 모아서 한 번에 처리한다. 상태 일괄처리 개념을 모르면 예상하지 못한 결과를 얻을 수 있다.
+
+```jsx
+const [value, setValue] = useState(0);
+const newValue = 10;
+
+function test(newValue) {
+  setValue(newValue);
+  setValue(value + 1);
+} 
+```
+
+위 코드에서 test 핸들러가 동작하면 value의 값이 11이 될 것 같다. 그러나 실제 value의 값은 1이 된다. 이는 리액트의 동작 방식 때문이다.
+
+리액트는 **“코드 라인”**이나 **“함수 호출”**이 아니라, 하나의 **렌더링 사이클(render phase)** 단위로 **batching**을 묶는다. 위 코드에서 setValue는 즉시 value를 변경시키는 함수가 아니라, 리액트 내부의 업데이트 큐에 “다음 렌더 때 value를 이 값으로 바꿔”라는 요청을 넣는 함수이다.
+
+리액트는 `test()`가 끝나고 이벤트 루프에서 렌더링 단계로 들어가기 전에 큐에 쌓인 모든 업데이트를 처리한다. 렌더링 이전에 batch로 반영된 state를 기반으로 리렌더링을 하는 것이다.
+
+리액트는 위에서 첫번째 setValue에는 newValue인 10을, 두번째 setValue에는 현재 스코프의 value값인 0에 1을 더해 1을 세팅한다. setValue에 세팅된 값은 즉각적으로 value가 되지 않고 value값에 1을 할당하라는 요청을 이벤트 루프에 송신하게 된다. 위와 같은 표현을 의도대로 작동하게 하려면 다음처럼 함수형 업데이트로 바꿔줘야 한다.
+
+```jsx
+function test(newValue) {
+  setValue(newValue);
+  setValue(prev => prev + 1); // prev는 큐에서 갱신된 최신값(newValue)을 받음
+}
+// 결과: newValue + 1
+```
+
+위와 같이 함수형으로 이전 값을 받아 사용하면 함수 바깥의 value를 참조하는 게 아니라 큐 내부에서 직렬 적용된 prev를 받아 항상 최신 prev를 이용할 수 있다.
+
+## +브라우저 런타임 환경
+
+![image.png](./img/browserRuntime.png)
+
+- **브라우저 이벤트** = 클릭, 타이머 만료, 네트워크 응답 같은 **사건**. 브라우저(Web APIs)가 만들어서 **해당 콜백을 큐에 넣음**.
+- **이벤트 루프** = **콜 스택이 비면** 큐에서 콜백 꺼내 실행. **런타임 스케줄링 메커니즘.**
+- 두 종류의 큐: **Macrotask**(setTimeout, I/O 등), **Microtask**(Promise.then, queueMicrotask).
+    
+    한 “tick”에서 **Microtask가 먼저** 일괄 처리되고 다음 task로 넘어감.
+    
+- **렌더링은 보통 task 사이**에 일어남(마이크로태스크 끝난 뒤).
+- **한 이벤트 사이클**은 **한 task**(=한 tick).
+
+### 유저가 클릭을 통해 setValue 핸들러를 동작시키면 어떻게 될까?
+
+1. 브라우저가 ‘click’ 이벤트를 디스패치하고 이벤트 버블링이 발생한다.
+2. 리액트의 root listener가 event를 캐치해 SyntheticEvent로 래핑한다.
+3. onClick 핸들러가 동작한다.
+    
+    |- setValue(newValue) → 업데이트 요청을 ‘큐’에 넣는다. (즉시 값 변경 x)
+    
+    |- setValue(prev ⇒ prev + 1) → 같은 tick 안의 업데이트는 자동 배칭된다.
+    
+    |- …
+    
+    (핸들러 리턴)
+    
+4. 리액트가 업데이트와 스케줄링을 플러시하고 `render(<App />)`를 실행한다. (같은 tick 끝 또는 직후)
+5. Render Phase: 컴포넌트 함수들 재호출 → VDOM 새로 그림(reconcile)
+6. Commit Phase: 실제 DOM 패치, ref 연결/해제, layout effect 실행
+7. 브라우저가 페인트한다.
+- 핸들러 안에 여러 setState가 있으면 **한 번의 렌더로 묶여서 batching된다.**
+- `render()` 는 VDOM 계산이고, 커밋 후에 진짜 DOM이 바뀐다.
+
+## + 리액트 훅 사용 패턴 정리
+
+## useState
+
+- **언제**: UI에 바로 반영해야 하는 값 (입력값, 토글, 필터 등).
+- **형태**: `const [value, setValue] = useState(initial)`
+- **불변성**: 객체/배열은 **얕은 복사 후 갱신**.
+    
+    ```tsx
+    setItems(prev => prev.map(it => it.id===id ? {...it, done: !it.done} : it));
+    ```
+    
+- **파생값**은 `useMemo`로 계산하거나 **렌더 중 계산**(빠를 때만). state로 저장 X.
+
+## useEffect
+
+- **언제**: **렌더 결과의 외부 세계와 동기화**가 필요할 때 (fetch, 구독, 타이머, DOM 직접조작, 로깅…).
+- **모델**: “렌더 → 이펙트 실행 → (옵션) 클린업”
+    
+    ```tsx
+    useEffect(() => {
+      const id = setInterval(tick, 1000);
+      return () => clearInterval(id); // 클린업
+    }, [tick]);
+    ```
+    
+- **의존성**: 이펙트 콜백 내부에서 **참조한 모든 값**을 deps에 넣는다. (함수는 `useCallback`으로 안정화)
+- **분리**: 역할이 다르면 **이펙트를 분리한다**. 하나에 다 때려 넣지 말 것.
+- **데이터 fetching**: 로딩/에러/성공 상태 세팅 + 중단 신호(AbortController) 처리 습관화.
+
+## useRef
+
+- **언제**: **렌더링에 영향 없는** 변경 가능한 값 저장, 또는 **DOM 노드 참조**.
+- **주의**: ref 변경은 **리렌더 유발 X**. UI 반영하려면 state.
+- **안정 참조**: 핸들러에서 “마지막 값”을 읽고 싶을 때 ref에 스냅샷 저장.
+
+## useMemo / useCallback
+
+- **언제**: 비싼 계산 결과/함수 참조를 **메모이제이션**해서 리렌더 비용/prop 변동을 줄일 때.
+- **규칙**: **측정 후** 써야 함. 무지성 남발 X.
+    
+    ```tsx
+    const expensive = useMemo(() => heavy(items), [items]);
+    const onClick = useCallback(() => doThing(expensive), [expensive]);
+    ```
+    
+
+## useReducer
+
+- **언제**: 상태 전이 로직이 복잡하거나 여러 필드가 **한 이벤트로 함께 변할 때**.
+- **장점**: 로직(testable)과 뷰 분리. action 중심으로 추론 쉬움.
+
+## useContext
+
+- **언제**: 테마/언어/세션 등 **앱 전역 값** 공유.
+- **주의**: 컨텍스트 값이 바뀌면 **구독 중인 컴포넌트 전부 리렌더**. 빈번한 값은 분리하거나 selector가 있는 라이브러리(Zustand, Jotai 등) 고려.
+
+## forwardRef + useImperativeHandle
+
+- **언제**: 부모가 자식의 **명령형 API(열기/닫기 등)**를 호출해야 할 때.
+- **모델**: `ref.current = { open, close }` 캡슐화.
+
+# 훅(Rules) 필수 규칙
+
+1. **항상 최상위에서 호출** (조건/루프/중첩 함수 안 금지).
+    
+    → 호출 순서로 내부 슬롯을 매핑하기 때문.
+    
+2. **`use`로 시작하는 함수만 훅**. 커스텀 훅도 `useSomething`.
+3. 의존성 배열은 **사용한 값 전부** 포함. (ESLint 플러그인 켜야 함)
+4. 렌더를 막는 로직은 훅이 아님. 훅은 **렌더 이후의 동기화**를 다룸.
+
+# 흔한 버그 & 처방
+
+## 1) 무한 렌더 루프
+
+```tsx
+useEffect(() => {
+  setState(x+1); // deps에 x 없음 or 매번 새로 생기는 참조
+});
+```
+
+- **해결**: deps 적절히 지정. state 갱신은 **함수형 업데이트** 사용.
+
+## 2) Stale Closure(낡은 값 캡처)
+
+```tsx
+useEffect(() => {
+  const id = setInterval(() => console.log(count), 1000);
+  return () => clearInterval(id);
+}, []); // count 고정됨
+```
+
+- **해결**: deps에 `count` 포함 or 최신값을 ref에 저장해서 참조.
+
+## 3) 인라인 핸들러로 자식 리렌더 폭
+
+```tsx
+<Button onClick={() => doThing(obj)} />
+```
+
+- **해결**: `useCallback`으로 참조 안정화. `obj`도 `useMemo` 고려.
+
+## 4) DOM 조작 시점 오류
+
+- **증상**: 레이아웃 측정/스크롤 이동이 깜빡이거나 값이 틀림.
+- **해결**: **동기 적용**이 필요하면 `useLayoutEffect` 사용 (남발 금지).
+
+## 5) prop drilling 지옥
+
+- **신호**: 3뎁스 이상으로 동일 값 전달.
+- **해결**: Context로 승격하거나 전역 상태 라이브러리 도입.
+
+# 커스텀 훅 패턴
+
+- **입출력만 명확히**: 내부 구현(이펙트/타이머)은 숨기고 **값/핸들러**만 리턴.
+- **예시**:
+    
+    ```tsx
+    function useDebouncedValue<T>(value: T, delay=300) {
+      const [deb, setDeb] = useState(value);
+      useEffect(() => {
+        const id = setTimeout(() => setDeb(value), delay);
+        return () => clearTimeout(id);
+      }, [value, delay]);
+      return deb;
+    }
+    ```
+    
+- **이점**: 화면은 심플, 사이드이펙트는 재사용 가능 코드로 격리.
+
+# 성능 & UX 체크리스트
+
+- 리스트 크다 → **가상 스크롤**(react-virtual) 검토.
+- 메모이제이션 전/후 **프로파일링** (React DevTools Profiler, why-did-you-render).
+- 이벤트 핸들러/스타일/배열 props **참조 안정화**.
+- fetch는 `useEffect` 대신 **TanStack Query** 같은 캐시 레이어 고려(리트라이/캐싱/동기화 보너스).
+
+# 언제 어떤 훅?
+
+- **간단한 UI 상태**: `useState`
+- **파생 계산**: 렌더 중 계산 or `useMemo`
+- **비동기/구독/타이머/DOM**: `useEffect`(+ cleanup)
+- **폼/포커스/스크롤/마지막 값**: `useRef`
+- **복합 상태 전이**: `useReducer`
+- **전역성/테마/세션**: `useContext` (+ 분리/메모 전략)
+- **명령형 제어 필요**: `forwardRef` + `useImperativeHandle`
+
+---
+
+훅 사용이 헷갈리면 **“렌더링 + 데이터? vs 렌더 이후 동기화?”**를 먼저 구분하고, 거기에 맞는 훅을 고르면 된다.
