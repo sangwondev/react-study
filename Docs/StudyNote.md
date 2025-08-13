@@ -1792,3 +1792,120 @@ export function useFetch(fetchFn, initialValue) {
 2. 컴포넌트가 훅을 호출하면 리액트는 Fiber의 훅 상태 슬롯의 연결 리스트를 만든다.(그렇기 때문에 호출 순서가 중요하다.)
 3. 커스텀 훅은 훅 호출 묶음의 함수일 뿐이다. Fiber 훅 슬롯에 커스텀 훅이 직접 할당되는 게 아니다. 커스텀 훅 내부에서 호출하는 네이티브 훅들이 커스텀 훅에서 호출된 순서대로 Fiber 훅 슬롯에 등록되는 것 뿐이다.
 4. 결과적으로 동일한 커스텀 훅이 여러 컴포넌트에서 동시적으로 사용돼도, 각 컴포넌트의 Fiber가 따로 있으니 독립성이 보장된다.
+
+## Forms
+
+리액트는 SPA로 동작한다. 그런데 HTML 기본 form 태그는 전송시 
+
+서버에 form 요청 전송 →
+
+서버가 HTML 전송 →
+
+브라우저가 페이지 전환
+
+순서로 진행되기 때문에 불필요한 페이지 전환이 발생한다. 리액트의 SPA 방식은 브라우저가 새 HTML로 페이지를 전환하는 대신 JS 코드로 직접 HTTP 요청(Ajax/Fetch)을 보내고, 서버의 응답에 따라 상태만 업데이트하는 프로세스다. 따라서 페이지 전체를 업데이트 하는 기본 form 방식은 SPA 방식의 UX, 성능 모두에 불리하다.
+
+### 폼 버튼 대신 form 태그에 onSubmit 이용
+
+의도중심제어: 버튼 클릭으로 submit하면 엔터 키 입력이나 스크린리더의 submit 명령으로는 제출할 수 없다. 그래서 `<form onSubmit={handleSubmit}>` 으로 사용하는 게 좋다.
+
+또 핸들러 함수에서는 onSubmit 동작의 결과로 들어오는 event를 받아 `event.preventDefault` 로 기본 동작을 막아준다. 기본 동작은 브라우저가 폼 데이터를 서버로 보내고 새 페이지를 로드하는 동작을 말한다. SPA에서는 JS로 fetch 요청을 보내 로컬 상태만 업데이트 해야 한다. 
+
+폼을 작성하는 방식은 `useRef()`를 사용해 전체 인풋을 한 번에 받아 검증하는 방법, `useState()` 로 폼을 입력받는 중에 검증하는 방법으로 나뉜다.
+
+```jsx
+import { useState } from 'react';
+
+export function useInput(defaultValue, validationFn) {
+    const [enteredValue, setEnteredValue] = useState(defaultValue);
+    const [didEdit, setDidEdit] = useState(false);
+
+    const valueIsValid = validationFn(enteredValue);
+
+    function handleInputChange(event) {
+        setEnteredValue(event.target.value);
+        setDidEdit(false);
+    }
+
+    function handleInputBlur() {
+        setDidEdit(true);
+    }
+
+    return {
+        value: enteredValue,
+        handleInputChange,
+        handleInputBlur,
+        hasError: didEdit && !valueIsValid
+    };
+}
+```
+
+이렇게 폼의 입력과 검증을 병행하는 훅을 만들어 활용할 수도 있다.
+
+```jsx
+import Input from './Input'
+import { isEmail, isNotEmpty, hasMinLength } from '../util/validation';
+import {useInput} from '../hooks/useInput.js';
+
+export default function Login() {
+  const {
+    value: emailValue, 
+    handleInputChange: handleEmailChange, 
+    handleInputBlur: handleEmailBlur,
+    hasError: emailHasError
+  } = useInput('', (value) => isEmail(value) && isNotEmpty(value));
+
+  const {
+    value: passwordValue,
+    handleInputChange: handlePasswordChange,
+    handleInputBlur: handlePasswordBlur,
+    hasError: passwordHasError
+  } = useInput('', (value) => hasMinLength(value, 6));
+
+  function handleSubmit(event) {
+    event.preventDefault();
+
+    if (emailHasError || passwordHasError) {
+      return;
+    }
+    console.log(emailValue, passwordValue);
+  }
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <h2>Login</h2>
+
+      <div className="control-row">
+        <Input
+          label='Email'
+          id='email'
+          type='email'
+          name='email'
+          onBlur={handleEmailBlur}
+          onChange={handleEmailChange}
+          value={emailValue}
+          error={emailHasError && 'Please enter a valid email!'}
+        />
+
+        <Input
+          label='Password'
+          id='password'
+          type='password'
+          name='password'
+          onBlur={handlePasswordBlur}
+          onChange={handlePasswordChange}
+          value={passwordValue}
+          error={passwordHasError && 'Please enter a valid password!'}
+        />
+      </div>
+
+      <p className="form-actions">
+        <button className="button button-flat">Reset</button>
+        <button className="button">Login</button>
+      </p>
+    </form>
+  );
+}
+```
+
+인풋과 관련된 커스텀 훅을 활용하면 컴포넌트 내에 중복적인 핸들러와 상태값을 두지 않아도 된다.
