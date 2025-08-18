@@ -23,7 +23,7 @@ Player.parse({ username: "billie", xp: 100 });
 // => returns { username: "billie", xp: 100 }
 ```
 
-`.parse` 를 사용해 인풋을 검증할 수 있다. 유효한 경우, Zod는 깊은 복사를 통해 강타입화된 인풋의 객체를 반환한다. 만약에 스키마가 `refinements` 나 `transform` 같은 비동기 API를 사용한다면 `.parseAsynce()` 메서드를 사용해야 한다.
+`.parse` 를 사용해 인풋을 검증할 수 있다. 유효한 경우, Zod는 강타입화된 인풋의 객체를 반환한다(coerce/transform/default 등의 변환이 없으면 원본을 그대로(참조 포함) 돌려주기도 한다). 만약에 스키마가 `refinements` 나 `transform` 같은 비동기 API를 사용한다면 `.parseAsync()` 메서드를 사용해야 한다.
 
 ```jsx
 await Player.parseAsync({ username: "billie", xp: 100 }); 
@@ -181,6 +181,41 @@ colors.parse("yellow"); // ❌
 ```jsx
 colors.values; // => Set<"red" | "green" | "blue">
 ```
+
+### Refinements
+Zod의 모든 스키마는 refinements라는 하나의 배열을 갖는다. Refinements는 Zod가 기본적으로 제공하지 않는 커스텀 유효성 검증을 제공한다.  
+`refine()`에는 다음과 같이 첫 번째 인자로 검증 함수(predicate)를 넣을 수 있다.  
+```jsx
+const myString = z.string().refine((val) => val.length <= 255);
+```
+`refine()` 메서드가 error를 던지지 않음을 주의하자. `refine()`은 단순히 true/falsy값을 반환한다. `refine()`을 통한 유효성 검증의 실패 처리는 Zod보다 앱에서 받아서 처리하는 게 좋다.  
+```jsx
+const myString = z.string().refine((val) => val.length > 8, { 
+  error: "Too short!" 
+});
+
+z.string().refine(
+  (val) => val.length > 5,
+  { message: "Must be longer than 5 characters" }
+);
+```
+여기서 error 또는 message에 할당된 문자열은 실제 에러 메시지가 아니라 `.refine()`이 falsy일 때 만들어내는 에러 이슈(issue)에 붙는 메시지이다.  
+predicate가 falsy이면 issue를 생성하고 메시지를 options에서 가져와 붙이는 구조.  
+만약 객체 스키마에서 특정 필드에 에러를 귀속시키고 싶다면 다음처럼 path를 지정해 에러 메시지를 할당할 수 있다.  
+```
+const schema = z.object({
+  password: z.string(),
+  confirm: z.string(),
+}).refine(
+  (data) => data.password === data.confirm,
+  {
+    message: "Passwords don't match",
+    path: ["confirm"], // confirm 필드에 에러를 귀속
+  }
+);
+```
+
+
 
 ### 정리
 
