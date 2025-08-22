@@ -1,6 +1,6 @@
 # RLS(Row Level Security)
 
-[image.png](../img/rls1.png)
+![image.png](../img/rls1.png)
 
 RLS가 없는 DB 호출 방식이다. 클라이언트가 인증 토큰으로 특정 데이터를 요구하는 콜을 API 서버에 전송한다. API 서버는 해당 토큰이 Redis 같은 RDB에 저장되어 있는지 확인 후 원하는 데이터를 PostgreSQL에서 찾아 반환한다.
 
