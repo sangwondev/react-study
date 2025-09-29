@@ -1,0 +1,326 @@
+# 레몬 스퀴지 결제
+
+## 웹훅 기반 결제
+
+![image.png](./img/webhook.png)
+
+클라이언트가 API 서버에게 받을 유니크한 URL을 제공하면 이벤트 발생 시 API 서버가 클라이언트에게 해당 이벤트를 전달한다. 이런 특성 때문에 역방향 API라고도 불린다. 레몬 스퀴지는 웹훅 기반 결제를 차용했다. 
+
+### 레몬 스퀴지의 결제
+
+레몬 스퀴지에서 결제 요청은 건 곧 고객에게 체크아웃(계산대) 페이지를 보내는 것을 말한다. 단건 결제, 구독 결제 모두 이 체크아웃 페이지를 사용한다.(카드, 페이팔, 애플페이 결제 가능)
+
+레몬 스퀴지 결제는 2단계로 구분한다. 
+
+1. 고객을 체크아웃 페이지로 리다이렉트 하기
+
+2. 결제가 처리되면 고객, 주문 데이터를 캡쳐링하고 저장하기.
+
+### 체크아웃 URLs
+
+```jsx
+# 예시
+https://[STORE].lemonsqueezy.com/checkout/buy/[VARIANT_ID]
+```
+
+상품마다 고유한 상품 ID가 있다. hosted checkout(페이지 이동), checkout overlay(모달 체크아웃) 두 방식이 제시됨.
+
+### 공유 가능한 checkout URLs vs. Cart URLs
+
+공유 가능한 checkout URLs는 항상 `/checkout/buy/` 를 링크에 포함한다.
+
+고객이 체크아웃 링크를 열면 해당 링크는 항상 cart URL로 변환된다.
+
+- URL이 다음 문구를 포함하도록 변경됨 `/checkout/?cart=`
+- 이 cart URL은 해당 고객에게 유일하게 적용되어 한 번만 사용 가능
+- Cart URLs는 공유하거나 재사용할 수 없음
+
+### *중요 - checkout URL의 원본을 공유하려면 따라서 항상 `/checkout/buy/` 를 링크에 포함시켜야 함
+
+### API로 체크아웃 만들기
+
+https://docs.lemonsqueezy.com/api/checkouts/create-checkout#checkout_options
+
+https://docs.lemonsqueezy.com/api/checkouts/the-checkout-object
+
+위 문서를 참고해 POST request로 체크아웃 요청을 만들 수 있다.
+
+이 체크아웃 요청 이후 받게 되는 response JSON 데이터의 data.attributes.url이 unique한 리다이렉트용 체크아웃 URL이 된다. 
+
+일반적인 UX → 유저가 “buy” 버튼을 누르면 해당 페이지에 기재된 상품과 유저 데이터를 request에 넣어 레몬스퀴지 체크아웃 API를 호출한다. await를 통해 response를 받게 되면 data.attributes.url의 경로로 고객을 리다이렉트해 레몬 스퀴지 페이지에서 고객이 결제를 완료하게 한다.
+
+### 체크아웃 개선하기
+
+레몬 스퀴지 체크아웃은 커스텀 옵션을 제공한다. 두 가지 방식으로 커스텀할 수 있다. 
+
+- 체크 아웃 URL에 쿼리 파라미터로 커스텀
+- 체크아웃 API 호출 시 추가 attributes 세팅으로 커스텀
+
+체크아웃 UI/UX는 앞서 말했듯이 Hosted Checkout(Default)과 Checkout Overlay로 나뉜다.
+
+### 체크아웃 오버레이(모달) 방식 구현
+
+우선 레몬 스퀴지 대시보드에서 product sharing settings → checkout overlay로 이동한다.
+
+checkout overlay에 제공되는 코드 스니펫을 복사해 해당 체크아웃을 제공할 페이지에 복붙한다.
+
+이후 Lemon.js를 사용하면 간편하게 생성할 수 있다.
+
+```jsx
+const checkoutUrl = response['data']['attributes']['url'];
+LemonSqueezy.Url.Open(checkoutUrl);
+```
+
+이때 response의 embed 속성을 true로 오게 한다.(체크아웃 커스텀 옵션의 embed 참고)
+
+### 고객 정보가 사전 기입된 체크아웃 폼 제공하기
+
+UX 개선을 위해 앱이 파악한 고객 정보를 미리 기입한 상태로 체크아웃을 제공할 수 있다.
+
+이름, 이메일 주소, 청구지 주소, tax number, 할인 코드, 수량…
+
+등이 사전 기입 가능한 정보에 해당된다.
+
+### → 쿼리 파라미터로 사전 입력하기
+
+```jsx
+https://[STORE].lemonsqueezy.com/checkout/buy/[VARIANT_ID]
+?checkout[email]=johndoe@example.com
+&checkout[name]=John Doe
+&checkout[billing_address][country]=US
+&checkout[billing_address][state]=NY
+&checkout[billing_address][zip]=10121
+&checkout[tax_number]=123456789
+&checkout[discount_code]=10PERCENTOFF
+```
+
+### → Checkout API 호출 시 사전 입력하기
+
+```bash
+curl -X "POST" "https://api.lemonsqueezy.com/v1/checkouts" \
+     -H 'Accept: application/vnd.api+json' \
+     -H 'Content-Type: application/vnd.api+json' \
+     -H 'Authorization: Bearer {api_key}' \
+     -d '{
+  "data": {
+    "type": "checkouts",
+    "attributes": {
+      "checkout_data": {
+        "email": "johndoe@example.com",
+        "name": "John Doe"
+      }
+    },
+    "relationships": {
+      ...
+    }
+  }
+}'
+```
+
+위 명령에서  “checkout_data”: {…}로 표시된 구간이 사전 입력 정보이다. 체크아웃 호출 시 코드 레벨에서 처리할 수 있다. 실제 체크아웃 호출은 가능하면 엣지 펑션, 백엔드 서버에서 처리하게 한다.
+
+### 커스텀 데이터 전달하기
+
+체크아웃에 커스텀 데이터를 전달해 웹훅이나 웹훅 이후 API response(체크아웃 후)에서 활용할 수 있다. 쿼리 파라미터를 사용하거나 API 호출 시 JSON attributes에 세팅해서 사용한다.
+
+```jsx
+https://[STORE].lemonsqueezy.com/checkout/buy/[VARIANT_ID]?checkout[custom][user_id]=123
+```
+
+```bash
+curl -X "POST" "https://api.lemonsqueezy.com/v1/checkouts" \
+     -H 'Accept: application/vnd.api+json' \
+     -H 'Content-Type: application/vnd.api+json' \
+     -H 'Authorization: Bearer {api_key}' \
+     -d '{
+  "data": {
+    "type": "checkouts",
+    "attributes": {
+      "checkout_data": {
+        "custom": {
+          "user_id": 123
+        }
+      }
+    },
+    "relationships": {
+      ...
+    }
+  }
+}'
+```
+
+custom 이하 데이터들이 커스텀 데이터에 해당된다.
+
+이 데이터들은 모든 Order 객체의 meta.custom_data에 포함되어 접근할 수 있다. 앱 내에서 구독, 구매에 관련된 데이터를 연계해 저장, 상태변화, 관리할 경우에 웹훅 성공/실패 시 해당 커스텀 데이터를 식별값으로 가지는 튜플에 접근해 상태값을 조정할 수 있다.
+
+### 체크아웃 페이지 커스텀
+
+레몬 스퀴지 대시보드 세팅이나 쿼리 파라미터 설정으로 UI를 커스텀할 수 있다. 색상, 로고 표시 정도
+
+### 커스텀 가격
+
+레몬 스퀴지는 스토어에 프로덕트를 미리 세팅하고 결제에 활용한다. 이때 가격도 세팅해놓는데 앱 UX에 따라 고정된 가격이 아니라 변동가로 접근해야할 때가 있다. 이 경우 쉽게 커스텀 가격으로 전환 가능하다.
+
+커스텀 가격을 적용하려면 체크아웃 API 요청 시에 custom_price 값을 추가해야 한다. 이렇게 하면 custom_price가 기존 프로덕트 가격을 오버라이딩한다. 이 가격은 세금을 반영하지 않는다. 또한 custom_price는 모든 화폐에서 가장 작은 단위로 계산된다.
+
+```bash
+curl -X "POST" "https://api.lemonsqueezy.com/v1/checkouts" \
+     -H 'Accept: application/vnd.api+json' \
+     -H 'Content-Type: application/vnd.api+json' \
+     -H 'Authorization: Bearer {api_key}' \
+     -d '{
+  "data": {
+    "type": "checkouts",
+    "attributes": {
+      "custom_price": 599
+    },
+    "relationships": {
+      ...
+    }
+  }
+}'  
+```
+
+위 명령에서 custom_price의 달러 환산가는 $5.99가 된다.
+
+### 프로덕트 디테일 override 하기
+
+가격 뿐만 아니라 프로덕트 세부사항도 오버라이드 할 수 있다. 특가 제공 등의 예외적 상황에 활용하자.
+
+```bash
+curl -X "POST" "https://api.lemonsqueezy.com/v1/checkouts" \
+     -H 'Accept: application/vnd.api+json' \
+     -H 'Content-Type: application/vnd.api+json' \
+     -H 'Authorization: Bearer {api_key}' \
+     -d '{
+  "data": {
+    "type": "checkouts",
+    "attributes": {
+      "product_options": {
+        "name": "Unique subscription for Dave",
+        "redirect_url": "https://myapp.com/welcome/?user=dave123",
+        "receipt_button_text": "Go to your account"
+      }
+    },
+    "relationships": {
+      ...
+    }
+  }
+}'
+```
+
+https://docs.lemonsqueezy.com/api/checkouts/create-checkout
+
+위 링크에서 product_options를 확인할 수 있다.
+
+### Checkout URLs 만료시키기
+
+특정 시간 안에 결제를 완료하지 못하면 안전을 위해 체크아웃을 폐기하는 게 좋다. 또한 기간제 상품의 경우 만료 기간 설정이 필수다.
+
+만료 기능을 추가하려면 data.attributes에 expires_at 요소를 추가하면 된다. 
+
+```bash
+curl -X "POST" "https://api.lemonsqueezy.com/v1/checkouts" \
+     -H 'Accept: application/vnd.api+json' \
+     -H 'Content-Type: application/vnd.api+json' \
+     -H 'Authorization: Bearer {api_key}' \
+     -d '{
+  "data": {
+    "type": "checkouts",
+    "attributes": {
+      "expires_at": "2023-04-30T23:59:59.000000Z"
+    },
+    "relationships": {
+      ...
+    }
+  }
+}' 
+```
+
+data를 넣으면 해당 시간 이후 결제를 할 수 없게 된다.
+
+## 체크아웃 이후
+
+체크아웃 후 결제가 완료되면 해당 사안과 관련된 데이터를 반드시 DB에 저장해야 한다. 체크아웃 이후 유저의 UX는 다음과 같다.
+
+1. 확인 모달
+
+![image.webp](./img/confirmation-modal.webp)
+
+https://docs.lemonsqueezy.com/help/checkout/customizing-confirmation-modal
+
+결제가 완료되면 위와 같은 모달이 표시된다. 
+
+1. 리다이렉트
+
+```bash
+curl -X "POST" "https://api.lemonsqueezy.com/v1/checkouts" \
+     -H 'Accept: application/vnd.api+json' \
+     -H 'Content-Type: application/vnd.api+json' \
+     -H 'Authorization: Bearer {api_key}' \
+     -d '{
+  "data": {
+    "type": "checkouts",
+    "attributes": {
+      "product_options": {
+        "redirect_url": "https://example.com/dashboard"
+      }
+    },
+    "relationships": {
+      ...
+    }
+  }
+}'
+```
+
+유저는 product_options.redirect_url에 세팅된 리다이렉트 위치로 이동된다. 디폴트는 레몬 스퀴지의 My Orders 페이지로 잡힌다.
+
+커스텀 링크로 리다이렉트 하면 위의 확인 모달의 버튼이 View Order가 아니라 Continue로 바뀐다.
+
+1. 영수증
+
+![image.webp](./img/receipt.webp)
+
+결제를 완료한 고객에게는 위와 같은 영수증 메일이 발송된다. 이메일 영수증도 커스텀할 수 있다.
+
+```bash
+curl -X "POST" "https://api.lemonsqueezy.com/v1/checkouts" \
+     -H 'Accept: application/vnd.api+json' \
+     -H 'Content-Type: application/vnd.api+json' \
+     -H 'Authorization: Bearer {api_key}' \
+     -d '{
+  "data": {
+    "type": "checkouts",
+    "attributes": {
+      "product_options": {
+        "receipt_button_text": "Go to your account",
+        "receipt_link_url": "https://example.com/dashboard/",
+        "receipt_thank_you_note": "Thank you for signing up! Click on the button to access your account."
+      }
+    },
+    "relationships": {
+      ...
+    }
+  }
+}'
+```
+
+product_options이하의 요소를 커스텀할 수 있다.
+
+### DB에 체크아웃과 구독 데이터 저장하기
+
+### 주문 데이터
+
+order_created 웹훅을 리스닝하거나 Lemon.js의 Checkout.Success 이벤트가 반환하는 data를 사용해 order 관련 데이터를 받아볼 수 있다. 일반적으로 order_created의 id값은 후속처리를 위해 저장해두는 게 좋다.
+
+### 구독 데이터
+
+subscription_created, subscribtion_updated 웹훅을 리스닝해 구독 id를 저장한다. subscription_created 이벤트는 자동으로 order_id를 반환하기에 특별히 order_created 이벤트를 리스닝할 필요가 없다.(구독을 팔았고 order id만 저장하고 싶은 경우)
+
+향후 구독 정책이 변경될 경우를 대비해 product_id와 variant_id도 함께 저장하는 게 좋다.
+
+구독과 관련해 추가적인 내용은 현재 앱에 적용되지 않기에 생략한다.
+
+### 주문 데이터 저장으로 UX 개선하기
+
+UX 개선을 위해 status, trial_ends_at, renews_at, ends_at, card_brand, card_last_four의 값은 저장해뒀다가 유저의 구독 정보 페이지에서 보여주는 게 좋다.
