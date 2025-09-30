@@ -436,3 +436,134 @@ POST request로 웹훅에 구독할 데이터(이벤트 정보, 웹훅 결과를
 https://docs.lemonsqueezy.com/help/webhooks/signing-requests
 
 웹훅이 유효한지 확인하기 위해 반드시 일치하는 해시값을 생성해 이 해시값이 헤더에 있는 시그니처와 일치하는지 확인해야 한다.
+
+### 웹훅 정의하기
+
+1. 콜백 URL 정의 -> 이벤트 동작 시 레몬 스퀴지가 POST request를 보낼 URL을 설정한다.
+2. 시크릿 서명하기 -> 랜덤 스트링 6 - 40 자를 비밀키로 세팅한다. 백엔드에서는 이 키로 정품 확인
+3. List of events -> 이 웹훅을 트리거할 이벤트 리스트 정의
+
+### 커스텀 데이터 보내기
+
+체크아웃에 커스텀 데이터를 추가하면 체크아웃 이벤트로 발생하는 웹훅이 해당 데이터를 사용할 수 있다. 
+
+### 웹훅 이벤트 보기
+
+최근 보낸 웹훅 로그는 웹훅 세팅 페이지에 기록된다.
+
+### 웹훅 Request
+
+레몬 스퀴지 웹훅은 웹훅을 트리거한 이벤트가 명시된 JSON POST다.
+```JSON
+Content-Type: application/json
+X-Event-Name: order_created
+X-Signature: {signature}
+```
+
+레몬 스퀴지에 웹훅 이벤트\(체크아웃, 구독...\)가 감지되면 설정된 웹훅이 전송  
+백엔드 서버는 웹훅을 성공적으로 받았음을 알리기 위해 200 코드를 보내야 한다.  
+만약에 200 response가 발송되지 않으면 웹훅은 3회\(5, 15, 125초 간격\) 자동 재전송 된다.  
+
+```json
+```json
+{
+  "meta": {
+    "event_name": "order_created",
+    "custom_data": {
+      "customer_id": 25
+    }
+  },
+  "data": {
+    "type": "orders",
+    "id": "1",
+    "attributes": {
+      "store_id": 1,
+      "customer_id": 1,
+      "identifier": "104e18a2-d755-4d4b-80c4-a6c1dcbe1c10",
+      "order_number": 1,
+      "user_name": "John Doe",
+      "user_email": "johndoe@example.com",
+      "currency": "USD",
+      "currency_rate": "1.0000",
+      "subtotal": 999,
+      "discount_total": 0,
+      "tax": 200,
+      "total": 1199,
+      "subtotal_usd": 999,
+      "discount_total_usd": 0,
+      "tax_usd": 200,
+      "total_usd": 1199,
+      "tax_name": "VAT",
+      "tax_rate": "20.00",
+      "status": "paid",
+      "status_formatted": "Paid",
+      "refunded": false,
+      "refunded_at": null,
+      "subtotal_formatted": "$9.99",
+      "discount_total_formatted": "$0.00",
+      "tax_formatted": "$2.00",
+      "total_formatted": "$11.99",
+      "first_order_item": {
+        "id": 1,
+        "order_id": 1,
+        "product_id": 1,
+        "variant_id": 1,
+        "product_name": "Test Limited License for 2 years",
+        "variant_name": "Default",
+        "price": 1199,
+        "created_at": "2021-08-17T09:45:53.000000Z",
+        "updated_at": "2021-08-17T09:45:53.000000Z",
+        "deleted_at": null,
+        "test_mode": false
+      },
+      "urls": {
+        "receipt": "https://app.lemonsqueezy.com/my-orders/104e18a2-d755-4d4b-80c4-a6c1dcbe1c10?signature=8847fff02e1bfb0c7c43ff1cdf1b1657a8eed2029413692663b86859208c9f42"
+      },
+      "created_at": "2021-08-17T09:45:53.000000Z",
+      "updated_at": "2021-08-17T09:45:53.000000Z"
+    },
+    "relationships": {
+      "store": {
+        "links": {
+          "related": "https://api.lemonsqueezy.com/v1/orders/1/store",
+          "self": "https://api.lemonsqueezy.com/v1/orders/1/relationships/store"
+        }
+      },
+      "customer": {
+        "links": {
+          "related": "https://api.lemonsqueezy.com/v1/orders/1/customer",
+          "self": "https://api.lemonsqueezy.com/v1/orders/1/relationships/customer"
+        }
+      },
+      "order-items": {
+        "links": {
+          "related": "https://api.lemonsqueezy.com/v1/orders/1/order-items",
+          "self": "https://api.lemonsqueezy.com/v1/orders/1/relationships/order-items"
+        }
+      },
+      "subscriptions": {
+        "links": {
+          "related": "https://api.lemonsqueezy.com/v1/orders/1/subscriptions",
+          "self": "https://api.lemonsqueezy.com/v1/orders/1/relationships/subscriptions"
+        }
+      },
+      "license-keys": {
+        "links": {
+          "related": "https://api.lemonsqueezy.com/v1/orders/1/license-keys",
+          "self": "https://api.lemonsqueezy.com/v1/orders/1/relationships/license-keys"
+        }
+      },
+      "discount-redemptions": {
+        "links": {
+          "related": "https://api.lemonsqueezy.com/v1/orders/1/discount-redemptions",
+          "self": "https://api.lemonsqueezy.com/v1/orders/1/relationships/discount-redemptions"
+        }
+      }
+    },
+    "links": {
+      "self": "https://api.lemonsqueezy.com/v1/orders/1"
+    }
+  }
+```
+
+커스텀 데이터는 meta.custom_data에 있다.
